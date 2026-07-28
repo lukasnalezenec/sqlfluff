@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: ae74aacdcb8de519aea9eaaca14d2ae1a8b604cc1062fddf3a806b94e4faa080
+_hash: 1b984d8bbbe97f5ef7e7934b8e455d3b78ed00244ff12c9b4b021d03765998b5
 file:
 - statement:
     compute_stats_statement:
@@ -251,4 +251,21 @@ file:
       - column_reference:
           naked_identifier: v
       - end_bracket: )
+- statement_terminator: ;
+- statement:
+    compute_stats_statement:
+    - keyword: COMPUTE
+    - keyword: INCREMENTAL
+    - keyword: STATS
+    - table_reference:
+        naked_identifier: target_table
+    - keyword: PARTITION
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: partition_code
+        comparison_operator:
+          raw_comparison_operator: '='
+        quoted_literal: "'202601'"
+        end_bracket: )
 - statement_terminator: ;

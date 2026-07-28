@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: 9fa5323d70eb614d5097bf8f47f62231d455a16d3ab08b71d869b85ad71a2196
+_hash: 444acb17702df885813943fc3d0695bbfffab39aee32655573e4bf24e142097c
 file:
 - statement:
     alter_table_statement:
@@ -66,4 +66,38 @@ file:
         naked_identifier: t1
     - keyword: RECOVER
     - keyword: PARTITIONS
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: target_table
+    - keyword: ADD
+    - keyword: PARTITION
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: partition_code
+        comparison_operator:
+          raw_comparison_operator: '='
+        quoted_literal: "'202601'"
+        end_bracket: )
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: target_table
+    - keyword: DROP
+    - keyword: PARTITION
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: partition_code
+        comparison_operator:
+          raw_comparison_operator: '='
+        quoted_literal: "'202601'"
+        end_bracket: )
 - statement_terminator: ;

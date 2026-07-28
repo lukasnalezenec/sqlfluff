@@ -873,6 +873,7 @@ class InsertStatementSegment(BaseSegment):
         "INSERT",
         Ref("ImpalaHintClauseGrammar", optional=True),
         _insert_target,
+        Ref("IfNotExistsGrammar", optional=True),
         OneOf(
             Sequence(
                 Ref("ImpalaHintClauseGrammar", optional=True),
