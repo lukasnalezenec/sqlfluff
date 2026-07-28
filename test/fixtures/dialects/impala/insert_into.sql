@@ -11,3 +11,5 @@ INSERT INTO TABLE db.foo [SHUFFLE] SELECT col1, col2 FROM db.foo2;
 INSERT INTO TABLE db.foo [NOSHUFFLE] SELECT col1, col2 FROM db.foo2;
 
 INSERT INTO db.foo (col1, col2) SELECT col1, col2 FROM db.foo2 WHERE col2 > 100;
+
+INSERT INTO TABLE target_table PARTITION (partition_code) SELECT id, name, partition_code FROM source_table;

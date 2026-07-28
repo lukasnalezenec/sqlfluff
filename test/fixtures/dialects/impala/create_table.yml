@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: fc12c92e8a0634cd1fbb19075f873761902039cb3fa222774ffacc65b2586530
+_hash: d8b943117bbf0061472a463d56294ede673c6978809bf77728a0b606f8b6fe81
 file:
 - statement:
     create_table_statement:
@@ -130,4 +130,383 @@ file:
     - keyword: CACHED
     - keyword: IN
     - quoted_literal: "'default_pool'"
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: EXTERNAL
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_external_location
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - end_bracket: )
+    - keyword: STORED
+    - keyword: AS
+    - keyword: PARQUET
+    - keyword: LOCATION
+    - quoted_literal: "'/data/test/t_external_location'"
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: EXTERNAL
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_external_full
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - end_bracket: )
+    - keyword: PARTITIONED
+    - keyword: BY
+    - bracketed:
+        start_bracket: (
+        column_definition:
+          naked_identifier: partition_code
+          data_type:
+            primitive_type:
+              keyword: STRING
+        end_bracket: )
+    - keyword: STORED
+    - keyword: AS
+    - keyword: PARQUET
+    - keyword: LOCATION
+    - quoted_literal: "'/data/test/t_external_full'"
+    - keyword: TBLPROPERTIES
+    - bracketed:
+      - start_bracket: (
+      - quoted_literal: '"transactional"'
+      - comparison_operator:
+          raw_comparison_operator: '='
+      - quoted_literal: '"false"'
+      - end_bracket: )
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_kudu
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - end_bracket: )
+    - keyword: STORED
+    - keyword: AS
+    - keyword: KUDU
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_kudu_comment
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - end_bracket: )
+    - keyword: COMMENT
+    - quoted_literal: "'table comment'"
+    - keyword: STORED
+    - keyword: AS
+    - keyword: KUDU
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_kudu_pk
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: business_date
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - comma: ','
+      - table_constraint:
+        - keyword: PRIMARY
+        - keyword: KEY
+        - bracketed:
+          - start_bracket: (
+          - column_reference:
+              naked_identifier: id
+          - comma: ','
+          - column_reference:
+              naked_identifier: business_date
+          - end_bracket: )
+      - end_bracket: )
+    - keyword: STORED
+    - keyword: AS
+    - keyword: KUDU
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_kudu_pk_comment
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: business_date
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - comma: ','
+      - table_constraint:
+        - keyword: PRIMARY
+        - keyword: KEY
+        - bracketed:
+          - start_bracket: (
+          - column_reference:
+              naked_identifier: id
+          - comma: ','
+          - column_reference:
+              naked_identifier: business_date
+          - end_bracket: )
+      - end_bracket: )
+    - keyword: COMMENT
+    - quoted_literal: "'kudu table with primary key'"
+    - keyword: STORED
+    - keyword: AS
+    - keyword: KUDU
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_like
+    - keyword: LIKE
+    - table_reference:
+        naked_identifier: source_table
+    - keyword: STORED
+    - keyword: AS
+    - keyword: PARQUET
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_part_parquet
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - end_bracket: )
+    - keyword: PARTITIONED
+    - keyword: BY
+    - bracketed:
+        start_bracket: (
+        column_definition:
+          naked_identifier: partition_code
+          data_type:
+            primitive_type:
+              keyword: STRING
+          column_constraint_segment:
+            comment_clause:
+              keyword: COMMENT
+              quoted_literal: "'technical partition'"
+        end_bracket: )
+    - keyword: STORED
+    - keyword: AS
+    - keyword: PARQUET
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_part_comment_parquet
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - end_bracket: )
+    - keyword: PARTITIONED
+    - keyword: BY
+    - bracketed:
+        start_bracket: (
+        column_definition:
+          naked_identifier: partition_code
+          data_type:
+            primitive_type:
+              keyword: STRING
+          column_constraint_segment:
+            comment_clause:
+              keyword: COMMENT
+              quoted_literal: "'technical partition'"
+        end_bracket: )
+    - keyword: COMMENT
+    - quoted_literal: "'table comment'"
+    - keyword: STORED
+    - keyword: AS
+    - keyword: PARQUET
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_tblprops
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - end_bracket: )
+    - keyword: STORED
+    - keyword: AS
+    - keyword: PARQUET
+    - keyword: TBLPROPERTIES
+    - bracketed:
+      - start_bracket: (
+      - quoted_literal: '"transactional"'
+      - comparison_operator:
+          raw_comparison_operator: '='
+      - quoted_literal: '"false"'
+      - end_bracket: )
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t_full_tail
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: BIGINT
+      - comma: ','
+      - column_definition:
+          naked_identifier: name
+          data_type:
+            primitive_type:
+              keyword: STRING
+      - end_bracket: )
+    - keyword: PARTITIONED
+    - keyword: BY
+    - bracketed:
+        start_bracket: (
+        column_definition:
+          naked_identifier: partition_code
+          data_type:
+            primitive_type:
+              keyword: STRING
+          column_constraint_segment:
+            comment_clause:
+              keyword: COMMENT
+              quoted_literal: "'technical partition'"
+        end_bracket: )
+    - keyword: COMMENT
+    - quoted_literal: "'table comment'"
+    - keyword: STORED
+    - keyword: AS
+    - keyword: PARQUET
+    - keyword: TBLPROPERTIES
+    - bracketed:
+      - start_bracket: (
+      - quoted_literal: '"transactional"'
+      - comparison_operator:
+          raw_comparison_operator: '='
+      - quoted_literal: '"false"'
+      - end_bracket: )
 - statement_terminator: ;
