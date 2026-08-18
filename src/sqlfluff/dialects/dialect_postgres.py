@@ -271,7 +271,7 @@ postgres_dialect.patch_lexer_matchers(
             "inline_comment",
             r"(--)[^\n]*",
             CommentSegment,
-            segment_kwargs={"trim_start": ("--")},
+            segment_kwargs={"trim_start": ("--",)},
         ),
         # In Postgres, the only escape character is ' for single quote strings
         RegexLexer(
@@ -380,6 +380,13 @@ postgres_dialect.sets("reserved_keywords").difference_update(
 postgres_dialect.sets("unreserved_keywords").difference_update(
     get_keywords(postgres_keywords, "not-keyword")
 )
+
+# `SOURCE` and `TARGET` are not PostgreSQL keywords in general, but the
+# `MERGE ... WHEN NOT MATCHED BY {SOURCE,TARGET}` clauses (added in PostgreSQL
+# 17) need them. Register them as unreserved so they remain usable as ordinary
+# identifiers (e.g. a table aliased `AS source`) while the merge grammar can
+# still match them.
+postgres_dialect.sets("unreserved_keywords").update(["SOURCE", "TARGET"])
 
 # Add datetime units
 postgres_dialect.sets("datetime_units").update(
@@ -1180,11 +1187,7 @@ class DatatypeSegment(ansi.DatatypeSegment):
         ),
         # array types
         OneOf(
-            AnyNumberOf(
-                Bracketed(
-                    Ref("ExpressionSegment", optional=True), bracket_type="square"
-                )
-            ),
+            AnyNumberOf(Ref("ArrayTypeSuffixSegment")),
             Ref("ArrayTypeSegment"),
             Ref("SizedArrayTypeSegment"),
             optional=True,
@@ -1197,6 +1200,20 @@ class ArrayTypeSegment(ansi.ArrayTypeSegment):
 
     type = "array_type"
     match_grammar = Ref.keyword("ARRAY")
+
+
+class ArrayTypeSuffixSegment(BaseSegment):
+    """The ``[]`` suffix that turns a scalar type into an array type.
+
+    e.g. the ``[]`` in ``int[]``. It's its own segment so that layout rule
+    LT01 keeps it touching the preceding type name rather than spacing it
+    like a standalone square bracket (see issue #5005).
+    """
+
+    type = "array_type_suffix"
+    match_grammar = Bracketed(
+        Ref("ExpressionSegment", optional=True), bracket_type="square"
+    )
 
 
 class IndexAccessMethodSegment(BaseSegment):
@@ -1453,7 +1470,10 @@ class CreateFunctionStatementSegment(ansi.CreateFunctionStatementSegment):
                                 Ref("DatatypeSegment"),
                                 Sequence(
                                     Ref("ColumnReferenceSegment"),
-                                    Ref("DatatypeSegment"),
+                                    OneOf(
+                                        Ref("DatatypeSegment"),
+                                        Ref("ColumnTypeReferenceSegment"),
+                                    ),
                                 ),
                             ),
                         )
@@ -4010,7 +4030,13 @@ class ColumnConstraintSegment(ansi.ColumnConstraintSegment):
                     Ref("ExpressionSegment"),
                 ),
             ),
-            Sequence("GENERATED", "ALWAYS", "AS", Ref("ExpressionSegment"), "STORED"),
+            Sequence(
+                "GENERATED",
+                "ALWAYS",
+                "AS",
+                Bracketed(Ref("ExpressionSegment")),
+                OneOf("STORED", "VIRTUAL", optional=True),
+            ),
             Sequence(
                 "GENERATED",
                 OneOf("ALWAYS", Sequence("BY", "DEFAULT")),
@@ -4095,8 +4121,14 @@ class ForeignTableColumnConstraintSegment(ansi.ColumnConstraintSegment):
                     Ref("ExpressionSegment"),
                 ),
             ),
-            # GENERATED ALWAYS AS ( generation_expr ) STORED
-            Sequence("GENERATED", "ALWAYS", "AS", Ref("ExpressionSegment"), "STORED"),
+            # GENERATED ALWAYS AS ( generation_expr ) [ STORED | VIRTUAL ]
+            Sequence(
+                "GENERATED",
+                "ALWAYS",
+                "AS",
+                Bracketed(Ref("ExpressionSegment")),
+                OneOf("STORED", "VIRTUAL", optional=True),
+            ),
         ),
     )
 
@@ -5518,6 +5550,56 @@ class InsertStatementSegment(ansi.InsertStatementSegment):
             Dedent,
             optional=True,
         ),
+    )
+
+
+class MergeMatchedClauseSegment(ansi.MergeMatchedClauseSegment):
+    """The `WHEN MATCHED` clause within a `MERGE` statement.
+
+    Overriding ANSI to allow `DO NOTHING`, which Postgres accepts as a merge
+    action alongside `UPDATE` and `DELETE`.
+    https://www.postgresql.org/docs/current/sql-merge.html
+    """
+
+    type = "merge_when_matched_clause"
+    match_grammar: Matchable = Sequence(
+        "WHEN",
+        "MATCHED",
+        Sequence("AND", Ref("ExpressionSegment"), optional=True),
+        "THEN",
+        Indent,
+        OneOf(
+            Ref("MergeUpdateClauseSegment"),
+            Ref("MergeDeleteClauseSegment"),
+            Sequence("DO", "NOTHING"),
+        ),
+        Dedent,
+    )
+
+
+class MergeNotMatchedClauseSegment(ansi.MergeNotMatchedClauseSegment):
+    """The `WHEN NOT MATCHED [BY TARGET]` clause within a `MERGE` statement.
+
+    Overriding ANSI to allow the optional `BY TARGET` qualifier (a PostgreSQL 17
+    synonym for the plain `WHEN NOT MATCHED`) and `DO NOTHING`, which Postgres
+    accepts as a merge action alongside `INSERT`.
+    https://www.postgresql.org/docs/current/sql-merge.html
+    """
+
+    type = "merge_when_not_matched_clause"
+    match_grammar: Matchable = Sequence(
+        "WHEN",
+        "NOT",
+        "MATCHED",
+        Sequence("BY", "TARGET", optional=True),
+        Sequence("AND", Ref("ExpressionSegment"), optional=True),
+        "THEN",
+        Indent,
+        OneOf(
+            Ref("MergeInsertClauseSegment"),
+            Sequence("DO", "NOTHING"),
+        ),
+        Dedent,
     )
 
 
@@ -7374,6 +7456,51 @@ class ColumnDefinitionSegment(ansi.ColumnDefinitionSegment):
                 Ref("CollationReferenceSegment"),
             ),
         ),
+    )
+
+
+class MergeMatchSegment(ansi.MergeMatchSegment):
+    """Contains PostgreSQL specific merge operations.
+
+    PostgreSQL 17 added a ``WHEN NOT MATCHED BY SOURCE`` clause (and made
+    ``BY TARGET`` an accepted synonym for the plain ``WHEN NOT MATCHED``) in
+    addition to the standard matched / not matched clauses.
+
+    https://www.postgresql.org/docs/17/sql-merge.html
+    """
+
+    match_grammar: Matchable = AnyNumberOf(
+        Ref("MergeMatchedClauseSegment"),
+        Ref("MergeNotMatchedClauseSegment"),
+        Ref("MergeNotMatchedBySourceClauseSegment"),
+        min_times=1,
+    )
+
+
+class MergeNotMatchedBySourceClauseSegment(BaseSegment):
+    """The ``WHEN NOT MATCHED BY SOURCE`` clause within a ``MERGE`` statement.
+
+    A ``NOT MATCHED BY SOURCE`` clause combines with an ``UPDATE``, ``DELETE`` or
+    ``DO NOTHING`` rather than an ``INSERT``, so it is closer to a matched clause
+    than to the standard not matched clause.
+    """
+
+    type = "merge_when_not_matched_by_source_clause"
+    match_grammar: Matchable = Sequence(
+        "WHEN",
+        "NOT",
+        "MATCHED",
+        "BY",
+        "SOURCE",
+        Sequence("AND", Ref("ExpressionSegment"), optional=True),
+        "THEN",
+        Indent,
+        OneOf(
+            Ref("MergeUpdateClauseSegment"),
+            Ref("MergeDeleteClauseSegment"),
+            Sequence("DO", "NOTHING"),
+        ),
+        Dedent,
     )
 
 

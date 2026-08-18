@@ -252,6 +252,38 @@ impala_dialect.add(
 )
 
 
+class ValuesClauseSegment(ansi.ValuesClauseSegment):
+    """A `VALUES` clause like in `INSERT` and `SELECT` for Impala.
+
+    See: https://impala.apache.org/docs/build/html/topics/impala_values.html
+    """
+
+    type = "values_clause"
+    match_grammar: Matchable = Sequence(
+        "VALUES",
+        Delimited(
+            Sequence(
+                Bracketed(
+                    Delimited(
+                        "DEFAULT",
+                        Sequence(
+                            OneOf(
+                                "DEFAULT",
+                                Ref("LiteralGrammar"),
+                                Ref("ExpressionSegment"),
+                            ),
+                            Ref("AliasExpressionSegment"),
+                        ),
+                        Ref("LiteralGrammar"),
+                        Ref("ExpressionSegment"),
+                    ),
+                    parse_mode=ParseMode.GREEDY,
+                ),
+            ),
+        ),
+    )
+
+
 class PoolNameReferenceSegment(BaseSegment):
     """Reference to an Impala cache pool name."""
 

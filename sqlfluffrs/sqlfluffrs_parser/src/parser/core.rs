@@ -107,6 +107,11 @@ pub struct ParserMetrics {
     pub terminator_checks: std::cell::Cell<usize>,
     /// Terminator hits (early exits caused by a terminator).
     pub terminator_hits: std::cell::Cell<usize>,
+    /// `try_terminal_inline` calls that matched a terminal variant frame-free.
+    pub terminal_fast_path_hits: std::cell::Cell<usize>,
+    /// `try_terminal_inline` calls that fell back to the frame-based path
+    /// (candidate was not a synchronous terminal variant).
+    pub terminal_fast_path_misses: std::cell::Cell<usize>,
 }
 
 impl ParserMetrics {
@@ -129,6 +134,14 @@ impl ParserMetrics {
             self.terminator_checks.get(),
         );
         m.insert("terminator_hits".to_string(), self.terminator_hits.get());
+        m.insert(
+            "terminal_fast_path_hits".to_string(),
+            self.terminal_fast_path_hits.get(),
+        );
+        m.insert(
+            "terminal_fast_path_misses".to_string(),
+            self.terminal_fast_path_misses.get(),
+        );
         m
     }
 }
@@ -599,14 +612,30 @@ impl<'a> Parser<'a> {
         &mut self,
         mut frame: TableParseFrame,
     ) -> Result<TableFrameResult, ParseError> {
-        let ctx = &self.grammar_ctx;
-        let grammar_id = frame.grammar_id;
         vdebug!(
             "START TypedParser: frame_id={}, pos={}, grammar_id={:?}",
             frame.frame_id,
             frame.pos,
-            grammar_id
+            frame.grammar_id
         );
+        self.pos = frame.pos;
+        let match_result = self.typed_parser_match(frame.grammar_id)?;
+        // On a failed match `typed_parser_match` leaves the position at the
+        // frame position, so `self.pos` is the correct end position either way.
+        frame.end_pos = Some(self.pos);
+        frame.state = FrameState::Complete(Arc::new(match_result));
+        Ok(TableFrameResult::Push(frame))
+    }
+
+    /// Frame-less core of the TypedParser match, shared by the frame handler
+    /// above and the inline terminal fast path in OneOf. Matches at
+    /// `self.pos`, which is advanced past the token on success and left
+    /// unchanged on a failed match.
+    pub(crate) fn typed_parser_match(
+        &mut self,
+        grammar_id: GrammarId,
+    ) -> Result<MatchResult, ParseError> {
+        let ctx = &self.grammar_ctx;
         // Extract all data from tables first (before any self methods)
         let tables = ctx.tables();
 
@@ -644,8 +673,6 @@ impl<'a> Parser<'a> {
         let casefold = self.grammar_ctx.casefold(grammar_id);
         let grammar_trim_chars = self.grammar_ctx.trim_chars(grammar_id);
 
-        self.pos = frame.pos;
-
         vdebug!(
             "TypedParser[table]: pos={}, template='{}', token_type='{}'",
             self.pos,
@@ -673,8 +700,7 @@ impl<'a> Parser<'a> {
 
                     // Extra debug: show token instance/class types
                     vdebug!(
-                        "TypedParser[table] MATCH DETAILS: frame_id={}, grammar_id={:?}, token_idx={}, instance_types={:?}, class_types={:?}",
-                        frame.frame_id,
+                        "TypedParser[table] MATCH DETAILS: grammar_id={:?}, token_idx={}, instance_types={:?}, class_types={:?}",
                         grammar_id,
                         token_pos,
                         inst_types,
@@ -789,9 +815,7 @@ impl<'a> Parser<'a> {
                 // Advance position after capturing token data
                 self.bump();
 
-                frame.state = FrameState::Complete(Arc::new(match_result));
-                frame.end_pos = Some(self.pos);
-                Ok(TableFrameResult::Push(frame))
+                Ok(match_result)
             }
             Some(_tok) => {
                 // Include instance and class type diagnostics to help debug why a
@@ -809,16 +833,12 @@ impl<'a> Parser<'a> {
                     inst_types,
                     class_types
                 );
-                frame.state = FrameState::Complete(Arc::new(MatchResult::empty_at(frame.pos)));
-                frame.end_pos = Some(frame.pos);
-                Ok(TableFrameResult::Push(frame))
+                Ok(MatchResult::empty_at(self.pos))
             }
 
             None => {
                 vdebug!("TypedParser[table] NOMATCH: EOF at pos={}", self.pos);
-                frame.state = FrameState::Complete(Arc::new(MatchResult::empty_at(frame.pos)));
-                frame.end_pos = Some(frame.pos);
-                Ok(TableFrameResult::Push(frame))
+                Ok(MatchResult::empty_at(self.pos))
             }
         }
     }
@@ -1204,7 +1224,16 @@ impl<'a> Parser<'a> {
 
         match self.peek() {
             Some(tok) => {
-                let raw = tok.raw();
+                // PYTHON PARITY: match against the full-unicode uppercase form
+                // when case-insensitive, like Python's str.upper() (e.g.
+                // 'straße' -> 'STRASSE') - the regex crate only does simple
+                // folding, which misses that. Uses the token's precomputed
+                // raw_upper(), so this stays cheap under backtracking.
+                let raw = if case_insensitive {
+                    tok.raw_upper()
+                } else {
+                    tok.raw()
+                };
 
                 // Check anti-pattern first (if present, should NOT match)
                 if let Some(ref anti) = anti_pattern {
@@ -1596,10 +1625,16 @@ impl<'a> Parser<'a> {
             if let Some(tok) = self.peek() {
                 let tok_raw = tok.raw().to_owned();
 
-                // Handle bracket openers - match entire bracketed section with nested brackets
-                if tok_raw == "(" || tok_raw == "[" || tok_raw == "{" {
+                // Handle bracket openers - match the entire bracketed section,
+                // recursing into any nested brackets (Python parity: resolve_bracket).
+                let opener_persists = self
+                    .dialect
+                    .get_bracket_pairs()
+                    .find_by_open(&tok_raw)
+                    .map(|p| p.persists);
+                if let Some(persists) = opener_persists {
                     let bracket_match =
-                        self.match_bracket_recursively(tok_raw.as_str(), tok_raw == "(", true);
+                        self.match_bracket_recursively(tok_raw.as_str(), persists, true)?;
                     child_matches.push(bracket_match);
                 } else {
                     // Regular token - just bump, it'll be part of the raw content
@@ -1655,20 +1690,23 @@ impl<'a> Parser<'a> {
     /// `resolve_bracket`: when true, directly-nested brackets are attached as
     /// structured children; the recursive call passes false, so deeper brackets
     /// are consumed but flattened to raw siblings (pure-Python parity).
+    ///
+    /// Reaching end of input without finding `close_bracket` is always an
+    /// error, regardless of parse_mode - never a silent partial match.
     fn match_bracket_recursively(
         &mut self,
         open_bracket: &str,
         persists: bool,
         nested_match: bool,
-    ) -> MatchResult {
-        // Python parity: bracket leaf type depends on the bracket char
-        // (`[`→square, `{`→curly); only `(` uses the plain bracket type.
-        let (close_bracket, start_bracket_type, end_bracket_type) = match open_bracket {
-            "(" => (")", "start_bracket", "end_bracket"),
-            "[" => ("]", "start_square_bracket", "end_square_bracket"),
-            "{" => ("}", "start_curly_bracket", "end_curly_bracket"),
-            _ => unreachable!(),
-        };
+    ) -> Result<MatchResult, ParseError> {
+        // `get_bracket_pairs` returns a `&'static` reference, so it can be held
+        // across the `&mut self` calls in the scan loop below.
+        let bracket_pairs = self.dialect.get_bracket_pairs();
+        let opener = bracket_pairs
+            .find_by_open(open_bracket)
+            .expect("match_bracket_recursively called with an unregistered opener");
+        let (close_bracket, start_bracket_type, end_bracket_type) =
+            (opener.close, opener.start_type, opener.end_type);
 
         let bracket_start = self.pos;
 
@@ -1691,22 +1729,38 @@ impl<'a> Parser<'a> {
         let mut inner_child_matches: Vec<Arc<MatchResult>> = vec![Arc::new(open_bracket_match)];
 
         // Match everything until matching close bracket, recursively handling nested brackets
+        let mut closed = false;
         while !self.is_at_end() {
             if let Some(inner_tok) = self.peek() {
                 let inner_raw = inner_tok.raw().to_owned();
 
                 if inner_raw == close_bracket {
                     // Found our closing bracket
+                    closed = true;
                     break;
-                } else if inner_raw == "(" || inner_raw == "[" || inner_raw == "{" {
-                    // Found a nested bracket - recursively match it
-                    let nested_persists = inner_raw == "(";
+                } else if let Some(nested_persists) =
+                    bracket_pairs.find_by_open(&inner_raw).map(|p| p.persists)
+                {
+                    // Found a nested bracket (any registered opener) - recurse,
+                    // carrying its own dialect persists flag.
                     let nested_bracket =
-                        self.match_bracket_recursively(inner_raw.as_str(), nested_persists, false);
+                        self.match_bracket_recursively(inner_raw.as_str(), nested_persists, false)?;
                     // Only attach directly-nested brackets; deeper ones flatten.
                     if nested_match {
                         inner_child_matches.push(Arc::new(nested_bracket));
                     }
+                } else if bracket_pairs.is_close(&inner_raw) {
+                    // A closing bracket of a different type than the one we
+                    // opened is a crossed bracket (Python's resolve_bracket
+                    // raises here rather than swallowing it as content).
+                    return Err(ParseError::with_context(
+                        format!(
+                            "Found unexpected end bracket!, was expecting <StringParser: '{}'>, but got <StringParser: '{}'>",
+                            close_bracket, inner_raw
+                        ),
+                        Some(self.pos),
+                        None,
+                    ));
                 } else {
                     // Regular token - just bump
                     self.bump();
@@ -1716,13 +1770,17 @@ impl<'a> Parser<'a> {
             }
         }
 
+        if !closed {
+            return Err(ParseError::with_context(
+                "Couldn't find closing bracket for opening bracket.".to_string(),
+                Some(bracket_start),
+                None,
+            ));
+        }
+
         // Record closing bracket position with SymbolSegment class
-        let bracket_end = if !self.is_at_end() {
-            self.bump(); // consume the close bracket
-            self.pos
-        } else {
-            self.pos
-        };
+        self.bump(); // consume the close bracket
+        let bracket_end = self.pos;
 
         let close_bracket_match = MatchResult {
             matched_slice: bracket_end - 1..bracket_end,
@@ -1738,6 +1796,11 @@ impl<'a> Parser<'a> {
         };
         inner_child_matches.push(Arc::new(close_bracket_match));
 
-        MatchResult::bracketed(bracket_start, bracket_end, inner_child_matches, persists)
+        Ok(MatchResult::bracketed(
+            bracket_start,
+            bracket_end,
+            inner_child_matches,
+            persists,
+        ))
     }
 }
