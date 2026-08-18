@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: 6a901b0a6669f3cb92d9f6fde8827c21f884a9e5feb71ff59793ed77a65b2579
+_hash: b5762f91923e8d134b6238cee1495a2cba251cae518d081579a6dce8974db48e
 file:
 - statement:
     insert_statement:
@@ -106,4 +106,84 @@ file:
           comma: ','
           quoted_literal: "'b'"
           end_bracket: )
+- statement_terminator: ;
+- statement:
+    insert_statement:
+    - keyword: INSERT
+    - start_square_bracket: '['
+    - keyword: CLUSTERED
+    - end_square_bracket: ']'
+    - keyword: INTO
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t1
+    - select_statement:
+        select_clause:
+          keyword: SELECT
+          select_clause_element:
+            wildcard_expression:
+              wildcard_identifier:
+                star: '*'
+        from_clause:
+          keyword: FROM
+          from_expression:
+            from_expression_element:
+              table_expression:
+                table_reference:
+                - naked_identifier: db
+                - dot: .
+                - naked_identifier: src
+- statement_terminator: ;
+- statement:
+    insert_statement:
+    - keyword: INSERT
+    - impala_hint: /* +SHUFFLE */
+    - keyword: INTO
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t1
+    - select_statement:
+        select_clause:
+          keyword: SELECT
+          select_clause_element:
+            wildcard_expression:
+              wildcard_identifier:
+                star: '*'
+        from_clause:
+          keyword: FROM
+          from_expression:
+            from_expression_element:
+              table_expression:
+                table_reference:
+                - naked_identifier: db
+                - dot: .
+                - naked_identifier: src
+- statement_terminator: ;
+- statement:
+    insert_statement:
+    - keyword: INSERT
+    - impala_hint: -- +NOSHUFFLE
+    - keyword: INTO
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t1
+    - select_statement:
+        select_clause:
+          keyword: SELECT
+          select_clause_element:
+            wildcard_expression:
+              wildcard_identifier:
+                star: '*'
+        from_clause:
+          keyword: FROM
+          from_expression:
+            from_expression_element:
+              table_expression:
+                table_reference:
+                - naked_identifier: db
+                - dot: .
+                - naked_identifier: src
 - statement_terminator: ;

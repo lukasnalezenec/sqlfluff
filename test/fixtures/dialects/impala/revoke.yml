@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: 6bd7acbc5a2587c755f4bec738146fdae06c82a1c52ee988596262859a64fc7a
+_hash: 0270157f66088503423d50d1cf65fe8f436870f23bbb5e47f19853ceb0fb526b
 file:
 - statement:
     access_statement:
@@ -29,4 +29,26 @@ file:
       - keyword: FROM
       - keyword: GROUP
       - naked_identifier: data_team
+- statement_terminator: ;
+- statement:
+    access_statement:
+      revoke_statement:
+      - keyword: REVOKE
+      - keyword: GRANT
+      - keyword: OPTION
+      - keyword: FOR
+      - keyword: SELECT
+      - bracketed:
+          start_bracket: (
+          naked_identifier: col1
+          end_bracket: )
+      - keyword: 'ON'
+      - keyword: TABLE
+      - table_reference:
+        - naked_identifier: db
+        - dot: .
+        - naked_identifier: t1
+      - keyword: FROM
+      - keyword: ROLE
+      - naked_identifier: analyst
 - statement_terminator: ;

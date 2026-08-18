@@ -17,3 +17,15 @@ CREATE EXTERNAL TABLE db.like_t
   LIKE PARQUET '/data/sample.parquet'
   CACHED IN 'default_pool';
 
+CREATE TABLE db.like_other LIKE db.src;
+
+CREATE TABLE IF NOT EXISTS db.kudu_range (
+    id INT,
+    year INT,
+    PRIMARY KEY (id, year)
+) PARTITION BY RANGE (year) (
+    PARTITION VALUE = 2016,
+    PARTITION 2016 < VALUES < 2018
+)
+SORT BY ZORDER (id)
+STORED AS KUDU;

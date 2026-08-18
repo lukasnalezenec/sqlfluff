@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: fc12c92e8a0634cd1fbb19075f873761902039cb3fa222774ffacc65b2586530
+_hash: 9e3c7fe89583d7844f0a43ed1f26a98276277b3a19990c6d8dfed6338efa0628
 file:
 - statement:
     create_table_statement:
@@ -130,4 +130,94 @@ file:
     - keyword: CACHED
     - keyword: IN
     - quoted_literal: "'default_pool'"
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: like_other
+    - keyword: LIKE
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: src
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: CREATE
+    - keyword: TABLE
+    - keyword: IF
+    - keyword: NOT
+    - keyword: EXISTS
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: kudu_range
+    - bracketed:
+      - start_bracket: (
+      - column_definition:
+          naked_identifier: id
+          data_type:
+            primitive_type:
+              keyword: INT
+      - comma: ','
+      - column_definition:
+          naked_identifier: year
+          data_type:
+            primitive_type:
+              keyword: INT
+      - comma: ','
+      - table_constraint:
+        - keyword: PRIMARY
+        - keyword: KEY
+        - bracketed:
+          - start_bracket: (
+          - column_reference:
+              naked_identifier: id
+          - comma: ','
+          - column_reference:
+              naked_identifier: year
+          - end_bracket: )
+      - end_bracket: )
+    - keyword: PARTITION
+    - keyword: BY
+    - keyword: RANGE
+    - bracketed:
+        start_bracket: (
+        naked_identifier: year
+        end_bracket: )
+    - bracketed:
+      - start_bracket: (
+      - keyword: PARTITION
+      - keyword: VALUE
+      - comparison_operator:
+          raw_comparison_operator: '='
+      - expression:
+          numeric_literal: '2016'
+      - comma: ','
+      - keyword: PARTITION
+      - expression:
+          numeric_literal: '2016'
+      - comparison_operator:
+          raw_comparison_operator: <
+      - keyword: VALUES
+      - comparison_operator:
+          raw_comparison_operator: <
+      - expression:
+          numeric_literal: '2018'
+      - end_bracket: )
+    - keyword: SORT
+    - keyword: BY
+    - keyword: ZORDER
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: id
+        end_bracket: )
+    - keyword: STORED
+    - keyword: AS
+    - keyword: KUDU
 - statement_terminator: ;
