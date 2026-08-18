@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: 9fa5323d70eb614d5097bf8f47f62231d455a16d3ab08b71d869b85ad71a2196
+_hash: c3f4b64f3b7fc1f1c700ec13062b6e504c4c1c9cfbbca776b779365d161dcddb
 file:
 - statement:
     alter_table_statement:
@@ -66,4 +66,122 @@ file:
         naked_identifier: t1
     - keyword: RECOVER
     - keyword: PARTITIONS
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t1
+    - keyword: ADD
+    - keyword: IF
+    - keyword: NOT
+    - keyword: EXISTS
+    - keyword: PARTITION
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: year
+        comparison_operator:
+          raw_comparison_operator: '='
+        numeric_literal: '2024'
+        end_bracket: )
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t1
+    - keyword: DROP
+    - keyword: IF
+    - keyword: EXISTS
+    - keyword: PARTITION
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: year
+        comparison_operator:
+          raw_comparison_operator: '='
+        numeric_literal: '2024'
+        end_bracket: )
+    - keyword: PURGE
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: t1
+    - keyword: ADD
+    - keyword: COLUMN
+    - keyword: IF
+    - keyword: NOT
+    - keyword: EXISTS
+    - column_definition:
+        naked_identifier: c3
+        data_type:
+          primitive_type:
+            keyword: INT
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: kudu_t
+    - keyword: ADD
+    - keyword: IF
+    - keyword: NOT
+    - keyword: EXISTS
+    - keyword: RANGE
+    - keyword: PARTITION
+    - keyword: VALUE
+    - comparison_operator:
+        raw_comparison_operator: '='
+    - expression:
+        numeric_literal: '2016'
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: kudu_t
+    - keyword: DROP
+    - keyword: IF
+    - keyword: EXISTS
+    - keyword: RANGE
+    - keyword: PARTITION
+    - keyword: VALUE
+    - comparison_operator:
+        raw_comparison_operator: '='
+    - expression:
+        numeric_literal: '2016'
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: kudu_t
+    - keyword: ALTER
+    - keyword: COLUMN
+    - naked_identifier: price
+    - keyword: SET
+    - keyword: DEFAULT
+    - expression:
+        numeric_literal: '0'
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: ALTER
+    - keyword: TABLE
+    - table_reference:
+        naked_identifier: kudu_t
+    - keyword: ALTER
+    - keyword: COLUMN
+    - naked_identifier: price
+    - keyword: DROP
+    - keyword: DEFAULT
 - statement_terminator: ;

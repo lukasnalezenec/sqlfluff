@@ -446,6 +446,7 @@ UNRESERVED_KEYWORDS = [
     # Impala-specific
     "SHUFFLE",
     "NOSHUFFLE",
+    "BROADCAST",
     # Hive unreserved keywords
     "ADMIN",
     "AFTER",

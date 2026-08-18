@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: ef5d2db482c8f078d43affd3b7f81f225c785714eeb91684175a5b59f6447162
+_hash: 3a9dd004ae26ddd1ff822c457ec3d5171b2ffe12858c120bed7c653348b98166
 file:
 - statement:
     alter_view_statement:
@@ -57,4 +57,17 @@ file:
     - keyword: OWNER
     - keyword: USER
     - naked_identifier: view_owner
+- statement_terminator: ;
+- statement:
+    alter_view_statement:
+    - keyword: ALTER
+    - keyword: VIEW
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: my_view
+    - keyword: SET
+    - keyword: OWNER
+    - keyword: ROLE
+    - naked_identifier: view_role
 - statement_terminator: ;

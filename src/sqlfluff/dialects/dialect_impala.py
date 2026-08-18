@@ -6,7 +6,7 @@ from sqlfluff.core.parser import (
     BaseSegment,
     BinaryOperatorSegment,
     Bracketed,
-    CommentSegment,
+    CodeSegment,
     Dedent,
     Delimited,
     Indent,
@@ -40,8 +40,8 @@ impala_dialect.insert_lexer_matchers(
     [
         RegexLexer(
             "impala_block_hint",
-            r"/\* \+(?:SHUFFLE|NOSHUFFLE|CLUSTERED) \*/",
-            CommentSegment,
+            r"/\*\s*\+(?:SHUFFLE|NOSHUFFLE|CLUSTERED)\s*\*/",
+            CodeSegment,
         ),
     ],
     before="block_comment",
@@ -50,8 +50,8 @@ impala_dialect.insert_lexer_matchers(
     [
         RegexLexer(
             "impala_dash_hint",
-            r"-- \+(?:SHUFFLE|NOSHUFFLE|CLUSTERED)",
-            CommentSegment,
+            r"--\s*\+(?:SHUFFLE|NOSHUFFLE|CLUSTERED)",
+            CodeSegment,
             segment_kwargs={"trim_start": ("--",)},
         ),
     ],
@@ -79,6 +79,11 @@ impala_dialect.replace(
             Bracketed(Ref("ExpressionSegment")),
             optional=True,
         ),
+    ),
+    # Join hints sit immediately after JOIN: JOIN [SHUFFLE] / JOIN [BROADCAST].
+    JoinKeywordsGrammar=Sequence(
+        "JOIN",
+        Ref("ImpalaJoinHintGrammar", optional=True),
     ),
     # Impala extends Hive file formats with Kudu (also used by SET FILEFORMAT).
     FileFormatGrammar=OneOf(
@@ -116,17 +121,21 @@ impala_dialect.add(
         Ref.keyword("UNCACHED"),
     ),
     ImpalaBracketHintGrammar=Bracketed(
-        OneOf("SHUFFLE", "NOSHUFFLE"),
+        OneOf("SHUFFLE", "NOSHUFFLE", "CLUSTERED"),
+        bracket_type="square",
+    ),
+    ImpalaJoinHintGrammar=Bracketed(
+        OneOf("SHUFFLE", "BROADCAST"),
         bracket_type="square",
     ),
     ImpalaDashHintGrammar=TypedParser(
         "impala_dash_hint",
-        CommentSegment,
+        CodeSegment,
         type="impala_hint",
     ),
     ImpalaBlockHintGrammar=TypedParser(
         "impala_block_hint",
-        CommentSegment,
+        CodeSegment,
         type="impala_hint",
     ),
     ImpalaHintClauseGrammar=OneOf(
@@ -161,9 +170,7 @@ impala_dialect.add(
     ),
     KuduRangePartitionElementGrammar=Sequence(
         "PARTITION",
-        Ref.keyword("IF", optional=True),
-        Ref.keyword("NOT", optional=True),
-        Ref.keyword("EXISTS", optional=True),
+        Ref("IfNotExistsGrammar", optional=True),
         Ref("KuduRangePartitionSpecGrammar"),
     ),
     KuduRangePartitionGrammar=Sequence(
@@ -184,8 +191,9 @@ impala_dialect.add(
         "DROP",
         "INSERT",
         "REFRESH",
-        "SELECT",
+        # Column-level SELECT must precede bare SELECT so `SELECT(col)` matches.
         Sequence("SELECT", Bracketed(Ref("SingleIdentifierGrammar"))),
+        "SELECT",
     ),
     ImpalaSecurableGrammar=OneOf(
         Sequence("SERVER"),
@@ -282,13 +290,6 @@ class ValuesClauseSegment(ansi.ValuesClauseSegment):
             ),
         ),
     )
-
-
-class PoolNameReferenceSegment(BaseSegment):
-    """Reference to an Impala cache pool name."""
-
-    type = "pool_name_reference"
-    match_grammar = Ref("SingleIdentifierGrammar")
 
 
 class SelectClauseModifierSegment(ansi.SelectClauseModifierSegment):
@@ -509,6 +510,7 @@ class CreateTableStatementSegment(hive.CreateTableStatementSegment):
         Sequence(
             "SORT",
             "BY",
+            Ref.keyword("ZORDER", optional=True),
             Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
             optional=True,
         ),
@@ -567,6 +569,7 @@ class CreateTableAsSelectStatementSegment(BaseSegment):
         Sequence(
             "SORT",
             "BY",
+            Ref.keyword("ZORDER", optional=True),
             Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
             optional=True,
         ),
@@ -656,9 +659,7 @@ class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
                 ),
                 Sequence(
                     "ADD",
-                    Ref.keyword("IF", optional=True),
-                    Ref.keyword("NOT", optional=True),
-                    Ref.keyword("EXISTS", optional=True),
+                    Ref("IfNotExistsGrammar", optional=True),
                     OneOf(
                         Sequence(
                             "COLUMNS",
@@ -666,9 +667,7 @@ class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
                         ),
                         Sequence(
                             "COLUMN",
-                            Ref.keyword("IF", optional=True),
-                            Ref.keyword("NOT", optional=True),
-                            Ref.keyword("EXISTS", optional=True),
+                            Ref("IfNotExistsGrammar", optional=True),
                             Ref("ColumnDefinitionSegment"),
                         ),
                         Sequence(
@@ -716,10 +715,6 @@ class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
                             "SET",
                             OneOf(
                                 Sequence("DEFAULT", Ref("ExpressionSegment")),
-                                Sequence(
-                                    Ref("SingleIdentifierGrammar"),
-                                    Ref("ExpressionSegment"),
-                                ),
                                 Sequence("COMMENT", Ref("QuotedLiteralSegment")),
                                 Sequence(
                                     "ENCODING",
@@ -735,18 +730,12 @@ class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
                                 ),
                             ),
                         ),
-                        "DROP",
-                        "DEFAULT",
+                        Sequence("DROP", "DEFAULT"),
                     ),
                 ),
                 Sequence(
                     "RECOVER",
                     "PARTITIONS",
-                ),
-                Sequence(
-                    Ref("PartitionSpecGrammar", optional=True),
-                    "SET",
-                    Ref("ImpalaCacheSpecGrammar"),
                 ),
                 Sequence(
                     Ref("PartitionSpecGrammar", optional=True),
@@ -770,8 +759,7 @@ class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
                 ),
                 Sequence(
                     "DROP",
-                    Ref.keyword("IF", optional=True),
-                    Ref.keyword("EXISTS", optional=True),
+                    Ref("IfExistsGrammar", optional=True),
                     OneOf(
                         Ref("PartitionSpecGrammar"),
                         Sequence(
@@ -823,8 +811,10 @@ class AlterViewStatementSegment(hive.AlterViewStatementSegment):
             Sequence(
                 "SET",
                 "OWNER",
-                "USER",
-                Ref("SingleIdentifierGrammar"),
+                OneOf(
+                    Sequence("USER", Ref("SingleIdentifierGrammar")),
+                    Sequence("ROLE", Ref("SingleIdentifierGrammar")),
+                ),
             ),
             Sequence("SET", Ref("TablePropertiesGrammar")),
             Sequence(
@@ -1306,9 +1296,7 @@ class ShowStatementSegment(BaseSegment):
                         Sequence("TABLE", Ref("TableReferenceSegment")),
                         Sequence(
                             "COLUMN",
-                            Ref("TableReferenceSegment"),
-                            Ref("DotSegment"),
-                            Ref("SingleIdentifierGrammar"),
+                            Ref("ColumnReferenceSegment"),
                         ),
                     ),
                     optional=True,

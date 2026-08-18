@@ -7,3 +7,11 @@ ORDER BY col1 NULLS FIRST;
 SELECT col1
 FROM db.t1 t1
   LEFT SEMI JOIN db.t2 t2 ON t1.id = t2.id;
+
+SELECT col1
+FROM db.t1 t1
+  JOIN [BROADCAST] db.t2 t2 ON t1.id = t2.id;
+
+SELECT col1
+FROM db.t1 t1
+  JOIN [SHUFFLE] db.t2 t2 ON t1.id = t2.id;

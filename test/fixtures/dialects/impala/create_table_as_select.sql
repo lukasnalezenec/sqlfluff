@@ -3,3 +3,9 @@ CREATE TABLE db.ctas_table
   STORED AS PARQUET
   CACHED IN 'default_pool'
 AS SELECT * FROM db.src;
+
+CREATE TABLE db.ctas_kudu
+  PRIMARY KEY (id)
+  PARTITION BY HASH (id) PARTITIONS 4
+  STORED AS KUDU
+AS SELECT id FROM db.src;

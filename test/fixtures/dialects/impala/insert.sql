@@ -6,3 +6,10 @@ INSERT OVERWRITE TABLE db.t1 [NOSHUFFLE]
   SELECT * FROM db.src;
 
 INSERT INTO db.t1 VALUES (1, 'a'), (2, 'b');
+
+INSERT [CLUSTERED] INTO db.t1 SELECT * FROM db.src;
+
+INSERT /* +SHUFFLE */ INTO db.t1 SELECT * FROM db.src;
+
+INSERT -- +NOSHUFFLE
+  INTO db.t1 SELECT * FROM db.src;
