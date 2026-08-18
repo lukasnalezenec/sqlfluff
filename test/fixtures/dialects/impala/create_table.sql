@@ -29,4 +29,3 @@ CREATE TABLE IF NOT EXISTS db.kudu_range (
 )
 SORT BY ZORDER (id)
 STORED AS KUDU;
-
