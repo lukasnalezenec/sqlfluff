@@ -506,6 +506,248 @@ class CreateRoleStatementSegment(ansi.CreateRoleStatementSegment):
         "ROLE",
         Ref("SingleIdentifierGrammar"),
     )
+class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
+    """Impala `ALTER TABLE` variants."""
+
+    type = "alter_table_statement"
+
+    match_grammar = Sequence(
+        "ALTER",
+        "TABLE",
+        Ref("TableReferenceSegment"),
+        Delimited(
+            OneOf(
+                Sequence(
+                    "RENAME",
+                    "TO",
+                    Ref("TableReferenceSegment"),
+                ),
+                Sequence(
+                    "ADD",
+                    Ref("IfNotExistsGrammar", optional=True),
+                    OneOf(
+                        Sequence(
+                            "COLUMNS",
+                            Bracketed(Delimited(Ref("ColumnDefinitionSegment"))),
+                        ),
+                        Sequence(
+                            "COLUMN",
+                            Ref("IfNotExistsGrammar", optional=True),
+                            Ref("ColumnDefinitionSegment"),
+                        ),
+                        Sequence(
+                            Ref("PartitionSpecGrammar"),
+                            Ref("LocationGrammar", optional=True),
+                            Ref("ImpalaCacheSpecGrammar", optional=True),
+                        ),
+                        Sequence(
+                            "RANGE",
+                            "PARTITION",
+                            Ref("KuduRangePartitionSpecGrammar"),
+                        ),
+                    ),
+                ),
+                Sequence(
+                    "REPLACE",
+                    "COLUMNS",
+                    Bracketed(Delimited(Ref("ColumnDefinitionSegment"))),
+                ),
+                Sequence(
+                    "DROP",
+                    Ref.keyword("COLUMN", optional=True),
+                    Ref("SingleIdentifierGrammar"),
+                ),
+                Sequence(
+                    "CHANGE",
+                    Ref.keyword("COLUMN", optional=True),
+                    Ref("SingleIdentifierGrammar"),
+                    Ref("ColumnDefinitionSegment"),
+                ),
+                Sequence(
+                    "SET",
+                    "OWNER",
+                    OneOf(
+                        Sequence("USER", Ref("SingleIdentifierGrammar")),
+                        Sequence("ROLE", Ref("SingleIdentifierGrammar")),
+                    ),
+                ),
+                Sequence(
+                    "ALTER",
+                    Ref.keyword("COLUMN", optional=True),
+                    Ref("SingleIdentifierGrammar"),
+                    OneOf(
+                        Sequence(
+                            "SET",
+                            OneOf(
+                                Sequence("DEFAULT", Ref("ExpressionSegment")),
+                                Sequence(
+                                    Ref("SingleIdentifierGrammar"),
+                                    Ref("ExpressionSegment"),
+                                ),
+                                Sequence("COMMENT", Ref("QuotedLiteralSegment")),
+                                Sequence(
+                                    "ENCODING",
+                                    Ref("SingleIdentifierGrammar"),
+                                ),
+                                Sequence(
+                                    "COMPRESSION",
+                                    Ref("SingleIdentifierGrammar"),
+                                ),
+                                Sequence(
+                                    "BLOCK_SIZE",
+                                    Ref("NumericLiteralSegment"),
+                                ),
+                            ),
+                        ),
+                        "DROP",
+                        "DEFAULT",
+                    ),
+                ),
+                Sequence(
+                    "RECOVER",
+                    "PARTITIONS",
+                ),
+                Sequence(
+                    Ref("PartitionSpecGrammar", optional=True),
+                    "SET",
+                    Ref("ImpalaCacheSpecGrammar"),
+                ),
+                Sequence(
+                    Ref("PartitionSpecGrammar", optional=True),
+                    "SET",
+                    OneOf(
+                        Ref("StoredAsGrammar"),
+                        Sequence("FILEFORMAT", Ref("FileFormatGrammar")),
+                        Ref("RowFormatClauseSegment"),
+                        Ref("LocationGrammar"),
+                        Ref("TablePropertiesGrammar"),
+                        Ref("SerdePropertiesGrammar"),
+                        Ref("ImpalaCacheSpecGrammar"),
+                    ),
+                ),
+                Sequence(
+                    "SET",
+                    "COLUMN",
+                    "STATS",
+                    Ref("SingleIdentifierGrammar"),
+                    Bracketed(Delimited(Ref("PropertyGrammar"))),
+                ),
+                Sequence(
+                    "DROP",
+                    Ref("IfExistsGrammar", optional=True),
+                    OneOf(
+                        Ref("PartitionSpecGrammar"),
+                        Sequence(
+                            "RANGE",
+                            "PARTITION",
+                            Ref("KuduRangePartitionSpecGrammar"),
+                        ),
+                    ),
+                    Ref.keyword("PURGE", optional=True),
+                ),
+                Sequence(
+                    "UNSET",
+                    "TBLPROPERTIES",
+                    Bracketed(Delimited(Ref("QuotedLiteralSegment"))),
+                ),
+            ),
+        ),
+    )
+class AlterViewStatementSegment(hive.AlterViewStatementSegment):
+    """Impala `ALTER VIEW` variants."""
+
+    type = "alter_view_statement"
+
+    match_grammar = Sequence(
+        "ALTER",
+        "VIEW",
+        Ref("TableReferenceSegment"),
+        OneOf(
+            Sequence(
+                Bracketed(
+                    Delimited(
+                        Sequence(
+                            Ref("SingleIdentifierGrammar"),
+                            Ref("CommentGrammar", optional=True),
+                        ),
+                    ),
+                    optional=True,
+                ),
+                "AS",
+                Ref("SelectableGrammar"),
+            ),
+            Sequence(
+                "RENAME",
+                "TO",
+                Ref("TableReferenceSegment"),
+            ),
+            Sequence(
+                "SET",
+                "OWNER",
+                "USER",
+                Ref("SingleIdentifierGrammar"),
+            ),
+            Sequence("SET", Ref("TablePropertiesGrammar")),
+            Sequence(
+                "UNSET",
+                "TBLPROPERTIES",
+                Bracketed(Delimited(Ref("QuotedLiteralSegment"))),
+            ),
+        ),
+    )
+class AlterDatabaseStatementSegment(hive.AlterDatabaseStatementSegment):
+    """Impala `ALTER DATABASE` — SET OWNER USER or ROLE."""
+
+    type = "alter_database_statement"
+
+    match_grammar = Sequence(
+        "ALTER",
+        OneOf("DATABASE", "SCHEMA"),
+        Ref("DatabaseReferenceSegment"),
+        "SET",
+        "OWNER",
+        OneOf(
+            Sequence("USER", Ref("SingleIdentifierGrammar")),
+            Sequence("ROLE", Ref("SingleIdentifierGrammar")),
+        ),
+    )
+class DropFunctionStatementSegment(ansi.DropFunctionStatementSegment):
+    """Impala `DROP FUNCTION` including aggregate form."""
+
+    type = "drop_function_statement"
+
+    match_grammar = Sequence(
+        "DROP",
+        Ref.keyword("AGGREGATE", optional=True),
+        "FUNCTION",
+        Ref("IfExistsGrammar", optional=True),
+        Ref("FunctionNameSegment"),
+        Bracketed(
+            Delimited(Ref("DatatypeSegment")),
+            optional=True,
+        ),
+    )
+class DropRoleStatementSegment(ansi.DropRoleStatementSegment):
+    """Impala `DROP ROLE`."""
+
+    type = "drop_role_statement"
+
+    match_grammar = Sequence(
+        "DROP",
+        "ROLE",
+        Ref("SingleIdentifierGrammar"),
+    )
+class TruncateStatementSegment(hive.TruncateStatementSegment):
+    """Impala `TRUNCATE TABLE` with optional IF EXISTS."""
+
+    type = "truncate_table"
+
+    match_grammar = Sequence(
+        "TRUNCATE",
+        Ref.keyword("TABLE", optional=True),
+        Ref("IfExistsGrammar", optional=True),
+        Ref("TableReferenceSegment"),
+    )
 class ValuesClauseSegment(ansi.ValuesClauseSegment):
     """A `VALUES` clause like in `INSERT` and `SELECT` for Impala.
 
