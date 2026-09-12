@@ -312,7 +312,7 @@ class TableConstraintSegment(hive.TableConstraintSegment):
         ),
     )
 class StatementSegment(hive.StatementSegment):
-    """Impala statement routing (CREATE DDL and SELECT extensions)."""
+    """Impala statement routing (through DML)."""
 
     type = "statement"
 
@@ -320,10 +320,17 @@ class StatementSegment(hive.StatementSegment):
         insert=[
             Ref("CreateTableAsSelectStatementSegment"),
             Ref("ComputeStatsStatementSegment"),
-            Ref("InsertStatementSegment"),
+            Ref("UpsertStatementSegment"),
             Ref("InvalidateMetadataStatementSegment"),
             Ref("RefreshStatementSegment"),
-        ]
+            Ref("LoadDataStatementSegment"),
+            Ref("ValuesStatementSegment"),
+        ],
+        remove=[
+            Ref("FromInsertStatementSegment"),
+            Ref("MsckRepairTableStatementSegment"),
+            Ref("MsckTableStatementSegment"),
+        ],
     )
 class CreateTableStatementSegment(hive.CreateTableStatementSegment):
     """Impala `CREATE TABLE` including Kudu and LIKE PARQUET variants."""
@@ -748,6 +755,106 @@ class TruncateStatementSegment(hive.TruncateStatementSegment):
         Ref("IfExistsGrammar", optional=True),
         Ref("TableReferenceSegment"),
     )
+class InsertStatementSegment(BaseSegment):
+    """Impala `INSERT` with hints and VALUES."""
+
+    type = "insert_statement"
+
+    _insert_target = Sequence(
+        OneOf("INTO", "OVERWRITE"),
+        Ref.keyword("TABLE", optional=True),
+        Ref("TableReferenceSegment"),
+        Bracketed(
+            Delimited(Ref("ColumnReferenceSegment")),
+            optional=True,
+        ),
+        Ref("PartitionSpecGrammar", optional=True),
+    )
+
+    match_grammar = Sequence(
+        Ref("WithCompoundStatementSegment", optional=True),
+        "INSERT",
+        Ref("ImpalaHintClauseGrammar", optional=True),
+        _insert_target,
+        OneOf(
+            Sequence(
+                Ref("ImpalaHintClauseGrammar", optional=True),
+                Ref("SelectableGrammar"),
+            ),
+            Ref("ValuesClauseSegment"),
+        ),
+    )
+class UpsertStatementSegment(BaseSegment):
+    """Impala `UPSERT` statement."""
+
+    type = "upsert_statement"
+
+    match_grammar = Sequence(
+        "UPSERT",
+        Ref("ImpalaBracketHintGrammar", optional=True),
+        "INTO",
+        Ref.keyword("TABLE", optional=True),
+        Ref("TableReferenceSegment"),
+        Bracketed(
+            Delimited(Ref("ColumnReferenceSegment")),
+            optional=True,
+        ),
+        OneOf(
+            Sequence(
+                Ref("ImpalaBracketHintGrammar", optional=True),
+                Ref("SelectableGrammar"),
+            ),
+            Ref("ValuesClauseSegment"),
+        ),
+    )
+class UpdateStatementSegment(ansi.UpdateStatementSegment):
+    """Impala `UPDATE` with optional FROM clause."""
+
+    type = "update_statement"
+
+    match_grammar = Sequence(
+        "UPDATE",
+        Ref("TableReferenceSegment"),
+        Ref("SetClauseListSegment"),
+        Ref("FromClauseSegment", optional=True),
+        Ref("WhereClauseSegment", optional=True),
+    )
+class DeleteStatementSegment(ansi.DeleteStatementSegment):
+    """Impala `DELETE` simple and join forms."""
+
+    type = "delete_statement"
+
+    match_grammar = OneOf(
+        Sequence(
+            "DELETE",
+            Ref.keyword("FROM", optional=True),
+            Ref("TableReferenceSegment"),
+            Ref("WhereClauseSegment", optional=True),
+        ),
+        Sequence(
+            "DELETE",
+            Ref("TableReferenceSegment"),
+            "FROM",
+            Ref("FromExpressionSegment"),
+            Ref("WhereClauseSegment", optional=True),
+        ),
+    )
+class LoadDataStatementSegment(BaseSegment):
+    """Impala `LOAD DATA INPATH` statement."""
+
+    type = "load_data_statement"
+
+    match_grammar = Sequence(
+        "LOAD",
+        "DATA",
+        "INPATH",
+        Ref("QuotedLiteralSegment"),
+        Ref.keyword("OVERWRITE", optional=True),
+        "INTO",
+        "TABLE",
+        Ref("TableReferenceSegment"),
+        Ref("PartitionSpecGrammar", optional=True),
+    )
 class ValuesClauseSegment(ansi.ValuesClauseSegment):
     """A `VALUES` clause like in `INSERT` and `SELECT` for Impala.
 
@@ -796,48 +903,6 @@ class ComputeStatsStatementSegment(BaseSegment):
                 "STATS",
                 Ref("TableReferenceSegment"),
                 Ref("PartitionSpecGrammar", optional=True),
-            ),
-        ),
-    )
-class InsertStatementSegment(BaseSegment):
-    """An `INSERT` statement.
-
-    Full Apache Impala `INSERT` reference here:
-    https://impala.apache.org/docs/build/html/topics/impala_insert.html
-    """
-
-    type = "insert_statement"
-
-    match_grammar = Sequence(
-        "INSERT",
-        OneOf(
-            Sequence(
-                "OVERWRITE",
-                Ref.keyword("TABLE", optional=True),
-                Ref("TableReferenceSegment"),
-                Ref("PartitionSpecGrammar", optional=True),
-                Bracketed(
-                    OneOf("SHUFFLE", "NOSHUFFLE"), bracket_type="square", optional=True
-                ),
-                Ref("IfNotExistsGrammar", optional=True),
-                Ref("SelectableGrammar"),
-            ),
-            Sequence(
-                "INTO",
-                Ref.keyword("TABLE", optional=True),
-                Ref("TableReferenceSegment"),
-                Sequence(
-                    Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
-                    optional=True,
-                ),
-                Ref("PartitionSpecGrammar", optional=True),
-                Bracketed(
-                    OneOf("SHUFFLE", "NOSHUFFLE"), bracket_type="square", optional=True
-                ),
-                OneOf(
-                    Ref("SelectableGrammar"),
-                    Ref("ValuesClauseSegment"),
-                ),
             ),
         ),
     )
