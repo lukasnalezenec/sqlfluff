@@ -312,7 +312,12 @@ class TableConstraintSegment(hive.TableConstraintSegment):
         ),
     )
 class StatementSegment(hive.StatementSegment):
-    """Impala statement routing (through authorization)."""
+    """Impala statement routing.
+
+    Only net-new statement refs belong in ``insert``. Segments that share a
+    class name with Hive/ANSI (e.g. ``InsertStatementSegment``) are overridden
+    by defining the Impala subclass in this module — do not insert them again.
+    """
 
     type = "statement"
 
@@ -326,8 +331,11 @@ class StatementSegment(hive.StatementSegment):
             Ref("RefreshAuthorizationStatementSegment"),
             Ref("RefreshStatementSegment"),
             Ref("UnsetStatementSegment"),
+            Ref("CommentOnStatementSegment"),
+            Ref("ShowStatementSegment"),
             Ref("LoadDataStatementSegment"),
             Ref("ValuesStatementSegment"),
+            Ref("ShutdownStatementSegment"),
         ],
         remove=[
             Ref("FromInsertStatementSegment"),
@@ -1036,6 +1044,196 @@ class AccessStatementSegment(ansi.AccessStatementSegment):
         Ref("GrantStatementSegment"),
         Ref("RevokeStatementSegment"),
     )
+class DescribeStatementSegment(ansi.DescribeStatementSegment):
+    """Impala `DESCRIBE` statement."""
+
+    type = "describe_statement"
+
+    match_grammar = Sequence(
+        OneOf("DESCRIBE", "DESC"),
+        Ref.keyword("DATABASE", optional=True),
+        OneOf("FORMATTED", "EXTENDED", optional=True),
+        OneOf(
+            Ref("TableReferenceSegment"),
+            Ref("DatabaseReferenceSegment"),
+        ),
+    )
+class ExplainStatementSegment(ansi.ExplainStatementSegment):
+    """Impala `EXPLAIN` for SELECT, CTAS, and INSERT."""
+
+    type = "explain_statement"
+
+    explainable_stmt: Matchable = OneOf(
+        Ref("SelectableGrammar"),
+        Ref("CreateTableAsSelectStatementSegment"),
+        Ref("InsertStatementSegment"),
+    )
+
+    match_grammar = Sequence(
+        "EXPLAIN",
+        explainable_stmt,
+    )
+class InvalidateMetadataStatementSegment(BaseSegment):
+    """Impala `INVALIDATE METADATA` statement."""
+
+    type = "invalidate_metadata_statement"
+
+    match_grammar = Sequence(
+        "INVALIDATE",
+        "METADATA",
+        Ref("TableReferenceSegment", optional=True),
+    )
+class RefreshStatementSegment(BaseSegment):
+    """Impala `REFRESH` table or `REFRESH FUNCTIONS` statements."""
+
+    type = "refresh_statement"
+
+    match_grammar = OneOf(
+        Sequence(
+            "REFRESH",
+            "FUNCTIONS",
+            Ref("DatabaseReferenceSegment"),
+        ),
+        Sequence(
+            "REFRESH",
+            Ref("TableReferenceSegment"),
+            Ref("PartitionSpecGrammar", optional=True),
+        ),
+    )
+class CommentOnStatementSegment(BaseSegment):
+    """Impala `COMMENT ON` statement."""
+
+    type = "comment_on_statement"
+
+    match_grammar = Sequence(
+        "COMMENT",
+        "ON",
+        OneOf(
+            Sequence("DATABASE", Ref("DatabaseReferenceSegment")),
+            Sequence("TABLE", Ref("TableReferenceSegment")),
+            Sequence(
+                "COLUMN",
+                Ref("ColumnReferenceSegment"),
+            ),
+        ),
+        "IS",
+        OneOf(Ref("QuotedLiteralSegment"), "NULL"),
+    )
+class ShowStatementSegment(BaseSegment):
+    """Impala `SHOW` statement variants."""
+
+    type = "show_statement"
+
+    match_grammar = Sequence(
+        "SHOW",
+        OneOf(
+            Sequence("DATABASES", Ref("ImpalaShowLikeGrammar", optional=True)),
+            Sequence("SCHEMAS", Ref("ImpalaShowLikeGrammar", optional=True)),
+            Sequence(
+                "TABLES",
+                Ref("ImpalaShowInGrammar", optional=True),
+                Ref("ImpalaShowLikeGrammar", optional=True),
+            ),
+            Sequence(
+                OneOf("AGGREGATE", "ANALYTIC", optional=True),
+                "FUNCTIONS",
+                Ref("ImpalaShowInGrammar", optional=True),
+                Ref("ImpalaShowLikeGrammar", optional=True),
+            ),
+            Sequence(
+                "CREATE",
+                "TABLE",
+                Ref("TableReferenceSegment"),
+            ),
+            Sequence(
+                "CREATE",
+                "VIEW",
+                Ref("TableReferenceSegment"),
+            ),
+            Sequence(
+                "TABLE",
+                "STATS",
+                Ref("TableReferenceSegment"),
+            ),
+            Sequence(
+                "COLUMN",
+                "STATS",
+                Ref("TableReferenceSegment"),
+            ),
+            Sequence(
+                OneOf("RANGE", optional=True),
+                "PARTITIONS",
+                Ref("TableReferenceSegment"),
+            ),
+            Sequence(
+                "FILES",
+                "IN",
+                Ref("TableReferenceSegment"),
+                Ref("PartitionSpecGrammar", optional=True),
+            ),
+            Sequence("ROLES"),
+            Sequence("CURRENT", "ROLES"),
+            Sequence(
+                "ROLE",
+                "GRANT",
+                "GROUP",
+                Ref("SingleIdentifierGrammar"),
+            ),
+            Sequence(
+                "GRANT",
+                OneOf("USER", "ROLE", "GROUP"),
+                Ref("SingleIdentifierGrammar"),
+                Sequence(
+                    "ON",
+                    OneOf(
+                        "SERVER",
+                        Sequence("URI", Ref("QuotedLiteralSegment")),
+                        Sequence("DATABASE", Ref("DatabaseReferenceSegment")),
+                        Sequence("TABLE", Ref("TableReferenceSegment")),
+                        Sequence(
+                            "COLUMN",
+                            Ref("TableReferenceSegment"),
+                            Ref("DotSegment"),
+                            Ref("SingleIdentifierGrammar"),
+                        ),
+                    ),
+                    optional=True,
+                ),
+            ),
+        ),
+    )
+class ValuesStatementSegment(BaseSegment):
+    """Standalone Impala `VALUES` statement."""
+
+    type = "values_statement"
+    match_grammar = Ref("ValuesClauseSegment")
+
+
+class ShutdownStatementSegment(BaseSegment):
+    """Impala `:SHUTDOWN` admin statement."""
+
+    type = "shutdown_statement"
+
+    match_grammar = Sequence(
+        Ref("ColonSegment"),
+        "SHUTDOWN",
+        Bracketed(
+            Delimited(
+                OneOf(
+                    Sequence(
+                        Ref("SingleIdentifierGrammar"),
+                        Ref("ColonSegment"),
+                        Ref("NumericLiteralSegment"),
+                    ),
+                    Ref("SingleIdentifierGrammar"),
+                    Ref("NumericLiteralSegment"),
+                ),
+                optional=True,
+            ),
+        ),
+    )
+
+
 class ValuesClauseSegment(ansi.ValuesClauseSegment):
     """A `VALUES` clause like in `INSERT` and `SELECT` for Impala.
 
@@ -1065,32 +1263,4 @@ class ValuesClauseSegment(ansi.ValuesClauseSegment):
                 ),
             ),
         ),
-    )
-class InvalidateMetadataStatementSegment(BaseSegment):
-    """An `INVALIDATE METADATA` statement.
-
-    Full Apache Impala `INVALIDATE METADATA` reference here:
-    https://impala.apache.org/docs/build/html/topics/impala_invalidate_metadata.html
-    """
-
-    type = "invalidate_metadata_statement"
-
-    match_grammar = Sequence(
-        "INVALIDATE",
-        "METADATA",
-        Ref("TableReferenceSegment", optional=True),
-    )
-class RefreshStatementSegment(BaseSegment):
-    """A `REFRESH` statement.
-
-    Full Apache Impala `REFRESH` reference here:
-    https://impala.apache.org/docs/build/html/topics/impala_refresh.html
-    """
-
-    type = "refresh_statement"
-
-    match_grammar = Sequence(
-        "REFRESH",
-        Ref("TableReferenceSegment"),
-        Ref("PartitionSpecGrammar", optional=True),
     )

@@ -337,6 +337,7 @@ RESERVED_KEYWORDS = [
     "SERIALIZE_FN",
     "SET",
     "SETS",
+    "SHUTDOWN",
     "SHOW",
     "SIMILAR",
     "SKIP",
