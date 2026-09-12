@@ -312,7 +312,7 @@ class TableConstraintSegment(hive.TableConstraintSegment):
         ),
     )
 class StatementSegment(hive.StatementSegment):
-    """Impala statement routing (through statistics)."""
+    """Impala statement routing (through session options)."""
 
     type = "statement"
 
@@ -324,6 +324,7 @@ class StatementSegment(hive.StatementSegment):
             Ref("UpsertStatementSegment"),
             Ref("InvalidateMetadataStatementSegment"),
             Ref("RefreshStatementSegment"),
+            Ref("UnsetStatementSegment"),
             Ref("LoadDataStatementSegment"),
             Ref("ValuesStatementSegment"),
         ],
@@ -911,6 +912,38 @@ class LoadDataStatementSegment(BaseSegment):
         "TABLE",
         Ref("TableReferenceSegment"),
         Ref("PartitionSpecGrammar", optional=True),
+    )
+class SetStatementSegment(hive.SetStatementSegment):
+    """Impala query option `SET` statement."""
+
+    type = "set_statement"
+
+    match_grammar = Sequence(
+        "SET",
+        OneOf(
+            "ALL",
+            Sequence(
+                Ref("ParameterNameSegment"),
+                Ref("RawEqualsSegment"),
+                OneOf(
+                    Ref("QuotedLiteralSegment"),
+                    Ref("ExpressionSegment"),
+                ),
+            ),
+            optional=True,
+        ),
+    )
+class UnsetStatementSegment(BaseSegment):
+    """Impala `UNSET` query option statement."""
+
+    type = "unset_statement"
+
+    match_grammar = Sequence(
+        "UNSET",
+        OneOf(
+            "ALL",
+            Delimited(Ref("ParameterNameSegment")),
+        ),
     )
 class ValuesClauseSegment(ansi.ValuesClauseSegment):
     """A `VALUES` clause like in `INSERT` and `SELECT` for Impala.
