@@ -312,7 +312,7 @@ class TableConstraintSegment(hive.TableConstraintSegment):
         ),
     )
 class StatementSegment(hive.StatementSegment):
-    """Impala statement routing (through session options)."""
+    """Impala statement routing (through authorization)."""
 
     type = "statement"
 
@@ -323,6 +323,7 @@ class StatementSegment(hive.StatementSegment):
             Ref("DropStatsStatementSegment"),
             Ref("UpsertStatementSegment"),
             Ref("InvalidateMetadataStatementSegment"),
+            Ref("RefreshAuthorizationStatementSegment"),
             Ref("RefreshStatementSegment"),
             Ref("UnsetStatementSegment"),
             Ref("LoadDataStatementSegment"),
@@ -944,6 +945,96 @@ class UnsetStatementSegment(BaseSegment):
             "ALL",
             Delimited(Ref("ParameterNameSegment")),
         ),
+    )
+class GrantStatementSegment(ansi.GrantStatementSegment):
+    """Impala `GRANT` statement."""
+
+    type = "grant_statement"
+
+    match_grammar = OneOf(
+        Sequence(
+            "GRANT",
+            "ROLE",
+            Ref("SingleIdentifierGrammar"),
+            "TO",
+            "GROUP",
+            Ref("SingleIdentifierGrammar"),
+        ),
+        Sequence(
+            "GRANT",
+            Ref("ImpalaPrivilegeGrammar"),
+            "ON",
+            Ref("ImpalaSecurableGrammar"),
+            "TO",
+            OneOf(
+                Sequence("USER", Ref("SingleIdentifierGrammar")),
+                Sequence("GROUP", Ref("SingleIdentifierGrammar")),
+                Sequence("ROLE", Ref("SingleIdentifierGrammar")),
+            ),
+            Sequence("WITH", "GRANT", "OPTION", optional=True),
+        ),
+    )
+class RevokeStatementSegment(ansi.RevokeStatementSegment):
+    """Impala `REVOKE` statement."""
+
+    type = "revoke_statement"
+
+    match_grammar = OneOf(
+        Sequence(
+            "REVOKE",
+            "ROLE",
+            Ref("SingleIdentifierGrammar"),
+            "FROM",
+            "GROUP",
+            Ref("SingleIdentifierGrammar"),
+        ),
+        Sequence(
+            "REVOKE",
+            OneOf(
+                Sequence(
+                    "GRANT",
+                    "OPTION",
+                    "FOR",
+                    Ref("ImpalaPrivilegeGrammar"),
+                    "ON",
+                    Ref("ImpalaSecurableGrammar"),
+                    "FROM",
+                    OneOf(
+                        Sequence("USER", Ref("SingleIdentifierGrammar")),
+                        Sequence("GROUP", Ref("SingleIdentifierGrammar")),
+                        Sequence("ROLE", Ref("SingleIdentifierGrammar")),
+                    ),
+                ),
+                Sequence(
+                    Ref("ImpalaPrivilegeGrammar"),
+                    "ON",
+                    Ref("ImpalaSecurableGrammar"),
+                    "FROM",
+                    OneOf(
+                        Sequence("USER", Ref("SingleIdentifierGrammar")),
+                        Sequence("GROUP", Ref("SingleIdentifierGrammar")),
+                        Sequence("ROLE", Ref("SingleIdentifierGrammar")),
+                    ),
+                ),
+            ),
+        ),
+    )
+class RefreshAuthorizationStatementSegment(BaseSegment):
+    """Impala `REFRESH AUTHORIZATION` statement."""
+
+    type = "refresh_authorization_statement"
+
+    match_grammar = Sequence(
+        "REFRESH",
+        "AUTHORIZATION",
+    )
+class AccessStatementSegment(ansi.AccessStatementSegment):
+    """Impala GRANT/REVOKE routing."""
+
+    type = "access_statement"
+    match_grammar = OneOf(
+        Ref("GrantStatementSegment"),
+        Ref("RevokeStatementSegment"),
     )
 class ValuesClauseSegment(ansi.ValuesClauseSegment):
     """A `VALUES` clause like in `INSERT` and `SELECT` for Impala.
