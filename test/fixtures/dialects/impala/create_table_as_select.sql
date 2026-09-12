@@ -18,3 +18,15 @@ CREATE EXTERNAL TABLE IF NOT EXISTS db.foo
 AS
     SELECT col1, col2, col3, col4
     FROM db.baz;
+
+CREATE TABLE db.ctas_table
+  PARTITIONED BY (year INT)
+  STORED AS PARQUET
+  CACHED IN 'default_pool'
+AS SELECT * FROM db.src;
+
+CREATE TABLE db.ctas_kudu
+  PRIMARY KEY (id)
+  PARTITION BY HASH (id) PARTITIONS 4
+  STORED AS KUDU
+AS SELECT id FROM db.src;

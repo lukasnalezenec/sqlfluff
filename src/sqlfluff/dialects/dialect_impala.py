@@ -2,16 +2,22 @@
 
 from sqlfluff.core.dialects import load_raw_dialect
 from sqlfluff.core.parser import (
+    AnyNumberOf,
     BaseSegment,
     BinaryOperatorSegment,
     Bracketed,
+    CommentSegment,
+    Dedent,
     Delimited,
+    Indent,
     Matchable,
     OneOf,
     ParseMode,
     Ref,
+    RegexLexer,
     Sequence,
     StringParser,
+    TypedParser,
 )
 from sqlfluff.dialects import dialect_ansi as ansi
 from sqlfluff.dialects import dialect_hive as hive
@@ -30,14 +36,476 @@ impala_dialect = hive_dialect.copy_as(
 impala_dialect.sets("unreserved_keywords").update(UNRESERVED_KEYWORDS)
 impala_dialect.sets("reserved_keywords").update(RESERVED_KEYWORDS)
 
+impala_dialect.insert_lexer_matchers(
+    [
+        RegexLexer(
+            "impala_block_hint",
+            r"/\* \+(?:SHUFFLE|NOSHUFFLE|CLUSTERED) \*/",
+            CommentSegment,
+        ),
+    ],
+    before="block_comment",
+)
+impala_dialect.insert_lexer_matchers(
+    [
+        RegexLexer(
+            "impala_dash_hint",
+            r"-- \+(?:SHUFFLE|NOSHUFFLE|CLUSTERED)",
+            CommentSegment,
+            segment_kwargs={"trim_start": ("--",)},
+        ),
+    ],
+    before="inline_comment",
+)
+
+# --------------------------------------------------------------------------- #
+# Grammar replacements (targeted sub-segment overrides)
+# --------------------------------------------------------------------------- #
+
 impala_dialect.replace(
     DivideSegment=OneOf(
         StringParser("DIV", BinaryOperatorSegment),
         StringParser("/", BinaryOperatorSegment),
-    )
+    ),
+    NonStandardJoinTypeKeywordsGrammar=OneOf(
+        Sequence(OneOf("LEFT", "RIGHT"), OneOf("SEMI", "ANTI")),
+    ),
+    PostTableExpressionGrammar=Sequence(
+        "TABLESAMPLE",
+        "SYSTEM",
+        Bracketed(Ref("ExpressionSegment")),
+        Sequence(
+            "REPEATABLE",
+            Bracketed(Ref("ExpressionSegment")),
+            optional=True,
+        ),
+    ),
+    # Impala extends Hive file formats with Kudu (also used by SET FILEFORMAT).
+    FileFormatGrammar=OneOf(
+        "SEQUENCEFILE",
+        "TEXTFILE",
+        "RCFILE",
+        "ORC",
+        "PARQUET",
+        "AVRO",
+        "JSONFILE",
+        "KUDU",
+        Sequence(
+            "INPUTFORMAT",
+            Ref("QuotedLiteralSegment"),
+            "OUTPUTFORMAT",
+            Ref("QuotedLiteralSegment"),
+        ),
+    ),
+)
+
+impala_dialect.add(
+    ImpalaCacheSpecGrammar=OneOf(
+        Sequence(
+            "CACHED",
+            "IN",
+            Ref("QuotedLiteralSegment"),
+            Sequence(
+                "WITH",
+                "REPLICATION",
+                Ref("RawEqualsSegment"),
+                Ref("NumericLiteralSegment"),
+                optional=True,
+            ),
+        ),
+        Ref.keyword("UNCACHED"),
+    ),
+    ImpalaBracketHintGrammar=Bracketed(
+        OneOf("SHUFFLE", "NOSHUFFLE"),
+        bracket_type="square",
+    ),
+    ImpalaDashHintGrammar=TypedParser(
+        "impala_dash_hint",
+        CommentSegment,
+        type="impala_hint",
+    ),
+    ImpalaBlockHintGrammar=TypedParser(
+        "impala_block_hint",
+        CommentSegment,
+        type="impala_hint",
+    ),
+    ImpalaHintClauseGrammar=OneOf(
+        Ref("ImpalaBracketHintGrammar"),
+        Ref("ImpalaDashHintGrammar"),
+        Ref("ImpalaBlockHintGrammar"),
+    ),
+    KuduColumnAttributeGrammar=OneOf(
+        Sequence(Ref.keyword("NOT", optional=True), "NULL"),
+        Sequence("ENCODING", Ref("SingleIdentifierGrammar")),
+        Sequence("COMPRESSION", Ref("SingleIdentifierGrammar")),
+        Sequence("DEFAULT", Ref("ExpressionSegment")),
+        Sequence("BLOCK_SIZE", Ref("NumericLiteralSegment")),
+    ),
+    KuduHashPartitionGrammar=Sequence(
+        "HASH",
+        Bracketed(Delimited(Ref("SingleIdentifierGrammar"))),
+        OneOf(
+            Sequence("PARTITIONS", Ref("NumericLiteralSegment")),
+            Sequence("INTO", Ref("NumericLiteralSegment"), "BUCKETS"),
+        ),
+    ),
+    KuduRangePartitionSpecGrammar=OneOf(
+        Sequence("VALUE", Ref("EqualsSegment"), Ref("ExpressionSegment")),
+        Sequence(
+            Ref("ExpressionSegment"),
+            OneOf(Ref("LessThanOrEqualToSegment"), Ref("LessThanSegment")),
+            "VALUES",
+            OneOf(Ref("LessThanOrEqualToSegment"), Ref("LessThanSegment")),
+            Ref("ExpressionSegment"),
+        ),
+    ),
+    KuduRangePartitionElementGrammar=Sequence(
+        "PARTITION",
+        Ref("IfNotExistsGrammar", optional=True),
+        Ref("KuduRangePartitionSpecGrammar"),
+    ),
+    KuduRangePartitionGrammar=Sequence(
+        "RANGE",
+        Bracketed(Delimited(Ref("SingleIdentifierGrammar"))),
+        Bracketed(Delimited(Ref("KuduRangePartitionElementGrammar"))),
+    ),
+    KuduPartitionByGrammar=Delimited(
+        OneOf(
+            Ref("KuduHashPartitionGrammar"),
+            Ref("KuduRangePartitionGrammar"),
+        ),
+    ),
+    ImpalaPrivilegeGrammar=OneOf(
+        "ALL",
+        "ALTER",
+        "CREATE",
+        "DROP",
+        "INSERT",
+        "REFRESH",
+        "SELECT",
+        Sequence("SELECT", Bracketed(Ref("SingleIdentifierGrammar"))),
+    ),
+    ImpalaSecurableGrammar=OneOf(
+        Sequence("SERVER"),
+        Sequence("URI", Ref("QuotedLiteralSegment")),
+        Sequence("DATABASE", Ref("DatabaseReferenceSegment")),
+        Sequence("TABLE", Ref("TableReferenceSegment")),
+        Sequence(
+            "COLUMN",
+            Ref("ColumnReferenceSegment"),
+        ),
+    ),
+    ImpalaUdfPropertyGrammar=OneOf(
+        Sequence("LOCATION", Ref("QuotedLiteralSegment")),
+        Sequence(
+            "SYMBOL",
+            Ref("EqualsSegment"),
+            Ref("QuotedLiteralSegment"),
+        ),
+        Sequence(
+            "INTERMEDIATE",
+            Ref("DatatypeSegment"),
+        ),
+        Sequence(
+            OneOf(
+                "INIT_FN",
+                "UPDATE_FN",
+                "MERGE_FN",
+                "PREPARE_FN",
+                "CLOSE_FN",
+                "CLOSEFN",
+                "SERIALIZE_FN",
+                "FINALIZE_FN",
+            ),
+            Ref("EqualsSegment"),
+            Ref("QuotedLiteralSegment"),
+        ),
+    ),
+    ImpalaShowLikeGrammar=Sequence(
+        Ref.keyword("LIKE", optional=True),
+        Ref("QuotedLiteralSegment"),
+        optional=True,
+    ),
+    ImpalaShowInGrammar=Sequence(
+        "IN",
+        Ref("DatabaseReferenceSegment"),
+        Ref("ImpalaShowLikeGrammar", optional=True),
+        optional=True,
+    ),
+    ImpalaIncrementalStatsPartitionSpecGrammar=Sequence(
+        "PARTITION",
+        Bracketed(
+            OneOf(
+                Delimited(
+                    Sequence(
+                        Ref("ColumnReferenceSegment"),
+                        Ref("EqualsSegment"),
+                        Ref("LiteralGrammar"),
+                    ),
+                ),
+                Ref("ExpressionSegment"),
+            ),
+        ),
+    ),
 )
 
 
+class PoolNameReferenceSegment(BaseSegment):
+    """Reference to an Impala cache pool name."""
+
+    type = "pool_name_reference"
+    match_grammar = Ref("SingleIdentifierGrammar")
+class SelectClauseModifierSegment(ansi.SelectClauseModifierSegment):
+    """Impala SELECT modifiers including STRAIGHT_JOIN."""
+
+    match_grammar = Sequence(
+        OneOf("ALL", "DISTINCT", optional=True),
+        Ref.keyword("STRAIGHT_JOIN", optional=True),
+    )
+class SelectClauseSegment(hive.SelectClauseSegment):
+    """Impala SELECT clause with optional bracket hints."""
+
+    match_grammar = Sequence(
+        "SELECT",
+        Ref("SelectClauseModifierSegment", optional=True),
+        Ref("ImpalaBracketHintGrammar", optional=True),
+        Indent,
+        Delimited(
+            Ref("SelectClauseElementSegment"),
+            allow_trailing=True,
+        ),
+        Dedent,
+        terminators=[Ref("SelectClauseTerminatorGrammar")],
+        parse_mode=ParseMode.GREEDY_ONCE_STARTED,
+    )
+class TableConstraintSegment(hive.TableConstraintSegment):
+    """Impala table constraints including FOREIGN KEY ... DISABLE NOVALIDATE RELY."""
+
+    match_grammar = Sequence(
+        Sequence("CONSTRAINT", Ref("ObjectReferenceSegment"), optional=True),
+        OneOf(
+            Sequence(
+                "UNIQUE",
+                Ref("BracketedColumnReferenceListGrammar"),
+            ),
+            Sequence(
+                Ref("PrimaryKeyGrammar"),
+                Ref("BracketedColumnReferenceListGrammar"),
+                Sequence(
+                    "DISABLE",
+                    "NOVALIDATE",
+                    OneOf("RELY", "NORELY", optional=True),
+                    optional=True,
+                ),
+            ),
+            Sequence(
+                Ref("ForeignKeyGrammar"),
+                Ref("BracketedColumnReferenceListGrammar"),
+                Ref("ReferenceDefinitionGrammar"),
+                Sequence(
+                    "DISABLE",
+                    "NOVALIDATE",
+                    OneOf("RELY", "NORELY", optional=True),
+                    optional=True,
+                ),
+            ),
+        ),
+    )
+class StatementSegment(hive.StatementSegment):
+    """Impala statement routing (CREATE DDL and SELECT extensions)."""
+
+    type = "statement"
+
+    match_grammar = hive.StatementSegment.match_grammar.copy(
+        insert=[
+            Ref("CreateTableAsSelectStatementSegment"),
+            Ref("ComputeStatsStatementSegment"),
+            Ref("InsertStatementSegment"),
+            Ref("InvalidateMetadataStatementSegment"),
+            Ref("RefreshStatementSegment"),
+        ]
+    )
+class CreateTableStatementSegment(hive.CreateTableStatementSegment):
+    """Impala `CREATE TABLE` including Kudu and LIKE PARQUET variants."""
+
+    type = "create_table_statement"
+
+    match_grammar = Sequence(
+        "CREATE",
+        Ref.keyword("EXTERNAL", optional=True),
+        "TABLE",
+        Ref("IfNotExistsGrammar", optional=True),
+        Ref("TableReferenceSegment"),
+        OneOf(
+            Sequence(
+                "LIKE",
+                "PARQUET",
+                Ref("QuotedLiteralSegment"),
+            ),
+            Sequence(
+                "LIKE",
+                Ref("TableReferenceSegment"),
+            ),
+            Bracketed(
+                Delimited(
+                    OneOf(
+                        Ref("TableConstraintSegment", optional=True),
+                        Sequence(
+                            Ref("ColumnDefinitionSegment"),
+                            AnyNumberOf(Ref("KuduColumnAttributeGrammar")),
+                            Ref("CommentGrammar", optional=True),
+                        ),
+                    ),
+                    bracket_pairs_set="angle_bracket_pairs",
+                ),
+                optional=True,
+            ),
+            optional=True,
+        ),
+        Sequence(
+            "PARTITIONED",
+            "BY",
+            Bracketed(
+                Delimited(
+                    Sequence(
+                        OneOf(
+                            Ref("ColumnDefinitionSegment"),
+                            Ref("SingleIdentifierGrammar"),
+                        ),
+                        Ref("CommentGrammar", optional=True),
+                    ),
+                ),
+            ),
+            optional=True,
+        ),
+        Sequence(
+            "PARTITION",
+            "BY",
+            Ref("KuduPartitionByGrammar"),
+            optional=True,
+        ),
+        Sequence(
+            "SORT",
+            "BY",
+            Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
+            optional=True,
+        ),
+        Ref("CommentGrammar", optional=True),
+        Ref("RowFormatClauseSegment", optional=True),
+        Ref("SerdePropertiesGrammar", optional=True),
+        OneOf(
+            Ref("StoredAsGrammar"),
+            Sequence("STORED", "AS", "KUDU"),
+            optional=True,
+        ),
+        Ref("LocationGrammar", optional=True),
+        Ref("ImpalaCacheSpecGrammar", optional=True),
+        Ref("TablePropertiesGrammar", optional=True),
+    )
+class CreateTableAsSelectStatementSegment(BaseSegment):
+    """Impala `CREATE TABLE ... AS SELECT`."""
+
+    type = "create_table_as_select_statement"
+
+    match_grammar = Sequence(
+        "CREATE",
+        Ref.keyword("EXTERNAL", optional=True),
+        "TABLE",
+        Ref("IfNotExistsGrammar", optional=True),
+        Ref("TableReferenceSegment"),
+        Sequence(
+            Ref("PrimaryKeyGrammar"),
+            Ref("BracketedColumnReferenceListGrammar"),
+            optional=True,
+        ),
+        Sequence(
+            "PARTITIONED",
+            "BY",
+            Bracketed(
+                Delimited(
+                    Sequence(
+                        OneOf(
+                            Ref("ColumnDefinitionSegment"),
+                            Ref("SingleIdentifierGrammar"),
+                        ),
+                        Ref("CommentGrammar", optional=True),
+                    ),
+                ),
+            ),
+            optional=True,
+        ),
+        Sequence(
+            "PARTITION",
+            "BY",
+            Ref("KuduPartitionByGrammar"),
+            optional=True,
+        ),
+        Sequence(
+            "SORT",
+            "BY",
+            Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
+            optional=True,
+        ),
+        Ref("CommentGrammar", optional=True),
+        Ref("RowFormatClauseSegment", optional=True),
+        Ref("SerdePropertiesGrammar", optional=True),
+        Ref("StoredAsGrammar", optional=True),
+        Ref("LocationGrammar", optional=True),
+        Ref("ImpalaCacheSpecGrammar", optional=True),
+        Ref("TablePropertiesGrammar", optional=True),
+        Sequence("STORED", "AS", "KUDU", optional=True),
+        "AS",
+        Ref("SelectableGrammar"),
+    )
+class CreateViewStatementSegment(ansi.CreateViewStatementSegment):
+    """Impala `CREATE VIEW` with column comments and TBLPROPERTIES."""
+
+    type = "create_view_statement"
+
+    match_grammar = Sequence(
+        "CREATE",
+        "VIEW",
+        Ref("IfNotExistsGrammar", optional=True),
+        Ref("TableReferenceSegment"),
+        Bracketed(
+            Delimited(
+                Sequence(
+                    Ref("SingleIdentifierGrammar"),
+                    Ref("CommentGrammar", optional=True),
+                ),
+            ),
+            optional=True,
+        ),
+        Ref("CommentGrammar", optional=True),
+        Ref("TablePropertiesGrammar", optional=True),
+        "AS",
+        Ref("SelectableGrammar"),
+    )
+class CreateFunctionStatementSegment(ansi.CreateFunctionStatementSegment):
+    """Impala UDF and aggregate function creation."""
+
+    type = "create_function_statement"
+
+    match_grammar = Sequence(
+        "CREATE",
+        Ref.keyword("AGGREGATE", optional=True),
+        "FUNCTION",
+        Ref("IfNotExistsGrammar", optional=True),
+        Ref("FunctionNameSegment"),
+        Ref("FunctionParameterListGrammar", optional=True),
+        Sequence("RETURNS", Ref("DatatypeSegment"), optional=True),
+        AnyNumberOf(Ref("ImpalaUdfPropertyGrammar"), min_times=1),
+    )
+class CreateRoleStatementSegment(ansi.CreateRoleStatementSegment):
+    """Impala `CREATE ROLE`."""
+
+    type = "create_role_statement"
+
+    match_grammar = Sequence(
+        "CREATE",
+        "ROLE",
+        Ref("SingleIdentifierGrammar"),
+    )
 class ValuesClauseSegment(ansi.ValuesClauseSegment):
     """A `VALUES` clause like in `INSERT` and `SELECT` for Impala.
 
@@ -68,24 +536,6 @@ class ValuesClauseSegment(ansi.ValuesClauseSegment):
             ),
         ),
     )
-
-
-class StatementSegment(hive.StatementSegment):
-    """A generic segment, to any of its child subsegments."""
-
-    type = "statement"
-
-    match_grammar = hive.StatementSegment.match_grammar.copy(
-        insert=[
-            Ref("CreateTableAsSelectStatementSegment"),
-            Ref("ComputeStatsStatementSegment"),
-            Ref("InsertStatementSegment"),
-            Ref("InvalidateMetadataStatementSegment"),
-            Ref("RefreshStatementSegment"),
-        ]
-    )
-
-
 class ComputeStatsStatementSegment(BaseSegment):
     """A `COMPUTE STATS statement.
 
@@ -107,154 +557,6 @@ class ComputeStatsStatementSegment(BaseSegment):
             ),
         ),
     )
-
-
-class CreateTableStatementSegment(hive.CreateTableStatementSegment):
-    """A `CREATE_TABLE` statement.
-
-    Full Apache Impala `CREATE TABLE` reference here:
-    https://impala.apache.org/docs/build/html/topics/impala_create_table.html
-    """
-
-    type = "create_table_statement"
-
-    match_grammar = Sequence(
-        "CREATE",
-        Ref.keyword("EXTERNAL", optional=True),
-        "TABLE",
-        Ref("IfNotExistsGrammar", optional=True),
-        Ref("TableReferenceSegment"),
-        Bracketed(
-            Delimited(
-                OneOf(
-                    Ref("TableConstraintSegment", optional=True),
-                    Sequence(
-                        Ref("ColumnDefinitionSegment"),
-                        Ref("CommentGrammar", optional=True),
-                    ),
-                ),
-                bracket_pairs_set="angle_bracket_pairs",
-            ),
-            optional=True,
-        ),
-        Sequence(
-            "PARTITIONED",
-            "BY",
-            Bracketed(
-                Delimited(
-                    Sequence(
-                        OneOf(
-                            Ref("ColumnDefinitionSegment"),
-                            Ref("SingleIdentifierGrammar"),
-                        ),
-                        Ref("CommentGrammar", optional=True),
-                    ),
-                ),
-            ),
-            optional=True,
-        ),
-        Sequence(
-            "SORT",
-            "BY",
-            Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
-            optional=True,
-        ),
-        Ref("CommentGrammar", optional=True),
-        Ref("RowFormatClauseSegment", optional=True),
-        Ref("SerdePropertiesGrammar", optional=True),
-        Ref("StoredAsGrammar", optional=True),
-        Ref("LocationGrammar", optional=True),
-        Sequence(
-            OneOf(
-                Sequence(
-                    "CACHED",
-                    "IN",
-                    Delimited(Ref("PoolNameReferenceSegment")),
-                    Sequence(
-                        "WITH",
-                        "REPLICATION",
-                        "=",
-                        Ref("NumericLiteralSegment"),
-                        optional=True,
-                    ),
-                ),
-                Ref.keyword("UNCACHED"),
-            ),
-            optional=True,
-        ),
-        Ref("TablePropertiesGrammar", optional=True),
-    )
-
-
-class CreateTableAsSelectStatementSegment(BaseSegment):
-    """A `CREATE TABLE ... AS SELECT ...` statement.
-
-    Full Apache Impala reference here:
-    https://impala.apache.org/docs/build/html/topics/impala_create_table.html
-
-    Unlike Hive, `AS SELECT ...` cannot be appended to any other SELECT statement,
-    so this is implemented as a separate segment.
-    """
-
-    type = "create_table_as_select_statement"
-
-    match_grammar = Sequence(
-        "CREATE",
-        Ref.keyword("EXTERNAL", optional=True),
-        "TABLE",
-        Ref("IfNotExistsGrammar", optional=True),
-        Ref("TableReferenceSegment"),
-        Sequence(
-            "PARTITIONED",
-            "BY",
-            Bracketed(
-                Delimited(
-                    Sequence(
-                        OneOf(
-                            Ref("ColumnDefinitionSegment"),
-                            Ref("SingleIdentifierGrammar"),
-                        ),
-                        Ref("CommentGrammar", optional=True),
-                    ),
-                ),
-            ),
-            optional=True,
-        ),
-        Sequence(
-            "SORT",
-            "BY",
-            Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
-            optional=True,
-        ),
-        Ref("CommentGrammar", optional=True),
-        Ref("RowFormatClauseSegment", optional=True),
-        Ref("SerdePropertiesGrammar", optional=True),
-        Ref("StoredAsGrammar", optional=True),
-        Ref("LocationGrammar", optional=True),
-        Sequence(
-            OneOf(
-                Sequence(
-                    "CACHED",
-                    "IN",
-                    Delimited(Ref("PoolNameReferenceSegment")),
-                    Sequence(
-                        "WITH",
-                        "REPLICATION",
-                        "=",
-                        Ref("NumericLiteralSegment"),
-                        optional=True,
-                    ),
-                ),
-                Ref.keyword("UNCACHED"),
-            ),
-            optional=True,
-        ),
-        Ref("TablePropertiesGrammar", optional=True),
-        "AS",
-        Ref("SelectableGrammar"),
-    )
-
-
 class InsertStatementSegment(BaseSegment):
     """An `INSERT` statement.
 
@@ -297,8 +599,6 @@ class InsertStatementSegment(BaseSegment):
             ),
         ),
     )
-
-
 class InvalidateMetadataStatementSegment(BaseSegment):
     """An `INVALIDATE METADATA` statement.
 
@@ -313,8 +613,6 @@ class InvalidateMetadataStatementSegment(BaseSegment):
         "METADATA",
         Ref("TableReferenceSegment", optional=True),
     )
-
-
 class RefreshStatementSegment(BaseSegment):
     """A `REFRESH` statement.
 
