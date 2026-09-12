@@ -312,7 +312,7 @@ class TableConstraintSegment(hive.TableConstraintSegment):
         ),
     )
 class StatementSegment(hive.StatementSegment):
-    """Impala statement routing (through DML)."""
+    """Impala statement routing (through statistics)."""
 
     type = "statement"
 
@@ -320,6 +320,7 @@ class StatementSegment(hive.StatementSegment):
         insert=[
             Ref("CreateTableAsSelectStatementSegment"),
             Ref("ComputeStatsStatementSegment"),
+            Ref("DropStatsStatementSegment"),
             Ref("UpsertStatementSegment"),
             Ref("InvalidateMetadataStatementSegment"),
             Ref("RefreshStatementSegment"),
@@ -512,6 +513,62 @@ class CreateRoleStatementSegment(ansi.CreateRoleStatementSegment):
         "CREATE",
         "ROLE",
         Ref("SingleIdentifierGrammar"),
+    )
+class ComputeStatsStatementSegment(BaseSegment):
+    """A `COMPUTE STATS` statement."""
+
+    type = "compute_stats_statement"
+
+    match_grammar = Sequence(
+        "COMPUTE",
+        OneOf(
+            Sequence(
+                "STATS",
+                Ref("TableReferenceSegment"),
+                Bracketed(
+                    Delimited(Ref("ColumnReferenceSegment")),
+                    optional=True,
+                ),
+                Sequence(
+                    "TABLESAMPLE",
+                    "SYSTEM",
+                    Bracketed(Ref("ExpressionSegment")),
+                    Sequence(
+                        "REPEATABLE",
+                        Bracketed(Ref("ExpressionSegment")),
+                        optional=True,
+                    ),
+                    optional=True,
+                ),
+            ),
+            Sequence(
+                "INCREMENTAL",
+                "STATS",
+                Ref("TableReferenceSegment"),
+                Ref("ImpalaIncrementalStatsPartitionSpecGrammar", optional=True),
+                Bracketed(
+                    Delimited(Ref("ColumnReferenceSegment")),
+                    optional=True,
+                ),
+            ),
+        ),
+    )
+class DropStatsStatementSegment(BaseSegment):
+    """A `DROP STATS` statement."""
+
+    type = "drop_stats_statement"
+
+    match_grammar = Sequence(
+        "DROP",
+        OneOf(
+            Sequence("STATS", Ref("TableReferenceSegment")),
+            Sequence(
+                "INCREMENTAL",
+                "STATS",
+                Ref("TableReferenceSegment"),
+                Ref("PartitionSpecGrammar"),
+            ),
+        ),
     )
 class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
     """Impala `ALTER TABLE` variants."""
@@ -882,27 +939,6 @@ class ValuesClauseSegment(ansi.ValuesClauseSegment):
                     ),
                     parse_mode=ParseMode.GREEDY,
                 ),
-            ),
-        ),
-    )
-class ComputeStatsStatementSegment(BaseSegment):
-    """A `COMPUTE STATS statement.
-
-    Full Apache Impala `COMPUTE STATS` reference here:
-    https://impala.apache.org/docs/build/html/topics/impala_compute_stats.html
-    """
-
-    type = "compute_stats_statement"
-
-    match_grammar = Sequence(
-        "COMPUTE",
-        OneOf(
-            Sequence("STATS", Ref("TableReferenceSegment")),
-            Sequence(
-                "INCREMENTAL",
-                "STATS",
-                Ref("TableReferenceSegment"),
-                Ref("PartitionSpecGrammar", optional=True),
             ),
         ),
     )
