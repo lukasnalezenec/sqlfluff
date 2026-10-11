@@ -1,0 +1,217 @@
+rule: IM02
+
+test_pass_documented_clause_order:
+  pass_str: |
+    CREATE EXTERNAL TABLE db.events (
+        id INT
+    )
+    PARTITIONED BY (year INT)
+    SORT BY (id)
+    COMMENT 'events'
+    ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+    WITH SERDEPROPERTIES ('field.delim'=',')
+    STORED AS PARQUET
+    LOCATION '/data/events'
+    CACHED IN 'pool' WITH REPLICATION = 3
+    TBLPROPERTIES ('transactional'='true');
+  configs:
+    core:
+      dialect: impala
+
+test_pass_kudu_partition_order:
+  pass_str: |
+    CREATE TABLE db.kudu_t (
+        id INT PRIMARY KEY,
+        val INT
+    )
+    PARTITION BY HASH (id) PARTITIONS 4, HASH (val) PARTITIONS 2
+    STORED AS KUDU;
+  configs:
+    core:
+      dialect: impala
+
+test_pass_inputformat_then_location:
+  pass_str: |
+    CREATE TABLE db.formats (
+        id INT
+    )
+    STORED AS INPUTFORMAT 'org.apache.hadoop.mapred.TextInputFormat'
+    OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat'
+    LOCATION '/data/files';
+  configs:
+    core:
+      dialect: impala
+
+test_pass_uncached_after_stored_as:
+  pass_str: |
+    CREATE TABLE db.plain (
+        id INT
+    )
+    STORED AS TEXTFILE
+    UNCACHED;
+  configs:
+    core:
+      dialect: impala
+
+test_pass_single_clause:
+  pass_str: |
+    CREATE TABLE db.only_props (
+        id INT
+    )
+    TBLPROPERTIES ('a'='b');
+  configs:
+    core:
+      dialect: impala
+
+test_pass_ctas_documented_order:
+  pass_str: |
+    CREATE TABLE db.ctas_table
+    PARTITIONED BY (year INT)
+    STORED AS PARQUET
+    LOCATION '/data/ctas'
+    TBLPROPERTIES ('a'='b')
+    AS SELECT * FROM db.src;
+  configs:
+    core:
+      dialect: impala
+
+test_pass_other_dialect:
+  pass_str: |
+    CREATE TABLE t (id INT);
+  configs:
+    core:
+      dialect: ansi
+
+test_fail_tblproperties_before_location:
+  fail_str: |
+    CREATE EXTERNAL TABLE db.staging (
+        id INT
+    )
+    STORED AS PARQUET
+    TBLPROPERTIES ('transactional'='true')
+    LOCATION '/data/staging';
+  fix_str: |
+    CREATE EXTERNAL TABLE db.staging (
+        id INT
+    )
+    STORED AS PARQUET
+    LOCATION '/data/staging'
+    TBLPROPERTIES ('transactional'='true');
+  configs:
+    core:
+      dialect: impala
+
+test_fail_several_clauses_reversed:
+  fail_str: |
+    CREATE TABLE db.staging (
+        id INT
+    )
+    TBLPROPERTIES ('a'='b')
+    LOCATION '/data/staging'
+    STORED AS PARQUET;
+  fix_str: |
+    CREATE TABLE db.staging (
+        id INT
+    )
+    STORED AS PARQUET
+    LOCATION '/data/staging'
+    TBLPROPERTIES ('a'='b');
+  configs:
+    core:
+      dialect: impala
+
+test_fail_ctas_tblproperties_before_stored_as:
+  fail_str: |
+    CREATE TABLE db.ctas_table
+    TBLPROPERTIES ('a'='b')
+    STORED AS PARQUET
+    AS SELECT * FROM db.src;
+  fix_str: |
+    CREATE TABLE db.ctas_table
+    STORED AS PARQUET
+    TBLPROPERTIES ('a'='b')
+    AS SELECT * FROM db.src;
+  configs:
+    core:
+      dialect: impala
+
+test_fail_partition_by_after_tblproperties:
+  fail_str: |
+    CREATE TABLE db.kudu_t (
+        id INT PRIMARY KEY
+    )
+    TBLPROPERTIES ('k'='v')
+    PARTITION BY HASH (id) PARTITIONS 4
+    STORED AS KUDU;
+  fix_str: |
+    CREATE TABLE db.kudu_t (
+        id INT PRIMARY KEY
+    )
+    PARTITION BY HASH (id) PARTITIONS 4
+    STORED AS KUDU
+    TBLPROPERTIES ('k'='v');
+  configs:
+    core:
+      dialect: impala
+
+test_fail_cached_after_tblproperties:
+  fail_str: |
+    CREATE TABLE db.pool_t (
+        id INT
+    )
+    STORED AS PARQUET
+    TBLPROPERTIES ('a'='b')
+    CACHED IN 'pool';
+  fix_str: |
+    CREATE TABLE db.pool_t (
+        id INT
+    )
+    STORED AS PARQUET
+    CACHED IN 'pool'
+    TBLPROPERTIES ('a'='b');
+  configs:
+    core:
+      dialect: impala
+
+test_fail_row_format_after_location:
+  fail_str: |
+    CREATE TABLE db.text (
+        id INT
+    )
+    LOCATION '/data/text'
+    ROW FORMAT DELIMITED FIELDS TERMINATED BY ',';
+  fix_str: |
+    CREATE TABLE db.text (
+        id INT
+    )
+    ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+    LOCATION '/data/text';
+  configs:
+    core:
+      dialect: impala
+
+test_fail_comment_after_stored_as:
+  fail_str: |
+    CREATE TABLE db.commented (
+        id INT
+    )
+    STORED AS PARQUET
+    COMMENT 'late';
+  fix_str: |
+    CREATE TABLE db.commented (
+        id INT
+    )
+    COMMENT 'late'
+    STORED AS PARQUET;
+  configs:
+    core:
+      dialect: impala
+
+test_fail_same_line_clause_order:
+  fail_str: |
+    CREATE TABLE db.staging (id INT) STORED AS PARQUET TBLPROPERTIES ('a'='b') LOCATION '/data/staging';
+  fix_str: |
+    CREATE TABLE db.staging (id INT) STORED AS PARQUET LOCATION '/data/staging' TBLPROPERTIES ('a'='b');
+  configs:
+    core:
+      dialect: impala
