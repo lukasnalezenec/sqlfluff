@@ -3,18 +3,22 @@
 from sqlfluff.core.dialects import load_raw_dialect
 from sqlfluff.core.parser import (
     AnyNumberOf,
+    AnySetOf,
     BaseSegment,
     BinaryOperatorSegment,
     Bracketed,
     CommentSegment,
     Dedent,
     Delimited,
+    IdentifierSegment,
     Indent,
     Matchable,
+    MultiStringParser,
     OneOf,
     ParseMode,
     Ref,
     RegexLexer,
+    SegmentGenerator,
     Sequence,
     StringParser,
     TypedParser,
@@ -249,6 +253,18 @@ impala_dialect.add(
             ),
         ),
     ),
+    # Reserved words are lexed as keywords, so an unquoted CTE name such as
+    # HOLD or TREAT never reaches NakedIdentifierSegment. Match them as
+    # identifiers here so rule IM01 can flag them instead of a parse error.
+    # The list is the Impala reserved-word set:
+    # https://impala.apache.org/docs/build/html/topics/impala_reserved_words.html
+    ImpalaReservedKeywordIdentifierSegment=SegmentGenerator(
+        lambda dialect: MultiStringParser(
+            dialect.sets("reserved_keywords"),
+            IdentifierSegment,
+            type="naked_identifier",
+        )
+    ),
 )
 
 
@@ -415,6 +431,77 @@ class DropStatsStatementSegment(BaseSegment):
     )
 
 
+# Impala CREATE TABLE options are a fixed sequence. AnySetOf accepts every
+# order so rule IM02 can report violations such as TBLPROPERTIES before
+# LOCATION. Documented order (Impala CREATE TABLE):
+# https://impala.apache.org/docs/build/html/topics/impala_create_table.html
+# PARTITIONED BY, PARTITION BY, SORT BY, COMMENT, ROW FORMAT,
+# WITH SERDEPROPERTIES, STORED AS, LOCATION, CACHED IN / UNCACHED,
+# TBLPROPERTIES.
+_ImpalaPartitionedByClause = Sequence(
+    "PARTITIONED",
+    "BY",
+    Bracketed(
+        Delimited(
+            Sequence(
+                OneOf(
+                    Ref("ColumnDefinitionSegment"),
+                    Ref("SingleIdentifierGrammar"),
+                ),
+                Ref("CommentGrammar", optional=True),
+            ),
+        ),
+    ),
+)
+
+_ImpalaKuduPartitionByClause = Sequence(
+    "PARTITION",
+    "BY",
+    Ref("KuduPartitionByGrammar"),
+)
+
+_ImpalaSortByClause = Sequence(
+    "SORT",
+    "BY",
+    Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
+)
+
+_ImpalaCreateTableOptionClauses = AnySetOf(
+    _ImpalaPartitionedByClause,
+    _ImpalaKuduPartitionByClause,
+    _ImpalaSortByClause,
+    Ref("CommentGrammar"),
+    Ref("RowFormatClauseSegment"),
+    Ref("SerdePropertiesGrammar"),
+    Ref("StoredAsGrammar"),
+    Ref("LocationGrammar"),
+    Ref("ImpalaCacheSpecGrammar"),
+    Ref("TablePropertiesGrammar"),
+)
+
+
+class CTEDefinitionSegment(ansi.CTEDefinitionSegment):
+    """CTE definition that also accepts an unquoted reserved word as the name.
+
+    Impala 3 and later reserve words such as ``HOLD`` and ``TREAT``. An
+    unquoted reserved CTE name is invalid and fails a strict parse. Accepting
+    it here lets rule ``IM01`` quote the name.
+    """
+
+    match_grammar = Sequence(
+        OneOf(
+            Ref("SingleIdentifierGrammar"),
+            Ref("ImpalaReservedKeywordIdentifierSegment"),
+        ),
+        Ref("CTEColumnList", optional=True),
+        Ref.keyword("AS", optional=True),
+        Bracketed(
+            Ref("SelectableGrammar"),
+            parse_mode=ParseMode.GREEDY,
+        ),
+    )
+
+
 class CreateTableStatementSegment(hive.CreateTableStatementSegment):
     """Impala `CREATE TABLE` including Kudu and LIKE PARQUET variants."""
 
@@ -452,45 +539,7 @@ class CreateTableStatementSegment(hive.CreateTableStatementSegment):
             ),
             optional=True,
         ),
-        Sequence(
-            "PARTITIONED",
-            "BY",
-            Bracketed(
-                Delimited(
-                    Sequence(
-                        OneOf(
-                            Ref("ColumnDefinitionSegment"),
-                            Ref("SingleIdentifierGrammar"),
-                        ),
-                        Ref("CommentGrammar", optional=True),
-                    ),
-                ),
-            ),
-            optional=True,
-        ),
-        Sequence(
-            "PARTITION",
-            "BY",
-            Ref("KuduPartitionByGrammar"),
-            optional=True,
-        ),
-        Sequence(
-            "SORT",
-            "BY",
-            Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
-            optional=True,
-        ),
-        Ref("CommentGrammar", optional=True),
-        Ref("RowFormatClauseSegment", optional=True),
-        Ref("SerdePropertiesGrammar", optional=True),
-        OneOf(
-            Ref("StoredAsGrammar"),
-            Sequence("STORED", "AS", "KUDU"),
-            optional=True,
-        ),
-        Ref("LocationGrammar", optional=True),
-        Ref("ImpalaCacheSpecGrammar", optional=True),
-        Ref("TablePropertiesGrammar", optional=True),
+        _ImpalaCreateTableOptionClauses,
     )
 
 
@@ -510,42 +559,7 @@ class CreateTableAsSelectStatementSegment(BaseSegment):
             Ref("BracketedColumnReferenceListGrammar"),
             optional=True,
         ),
-        Sequence(
-            "PARTITIONED",
-            "BY",
-            Bracketed(
-                Delimited(
-                    Sequence(
-                        OneOf(
-                            Ref("ColumnDefinitionSegment"),
-                            Ref("SingleIdentifierGrammar"),
-                        ),
-                        Ref("CommentGrammar", optional=True),
-                    ),
-                ),
-            ),
-            optional=True,
-        ),
-        Sequence(
-            "PARTITION",
-            "BY",
-            Ref("KuduPartitionByGrammar"),
-            optional=True,
-        ),
-        Sequence(
-            "SORT",
-            "BY",
-            Bracketed(Delimited(Sequence(Ref("ColumnReferenceSegment")))),
-            optional=True,
-        ),
-        Ref("CommentGrammar", optional=True),
-        Ref("RowFormatClauseSegment", optional=True),
-        Ref("SerdePropertiesGrammar", optional=True),
-        Ref("StoredAsGrammar", optional=True),
-        Ref("LocationGrammar", optional=True),
-        Ref("ImpalaCacheSpecGrammar", optional=True),
-        Ref("TablePropertiesGrammar", optional=True),
-        Sequence("STORED", "AS", "KUDU", optional=True),
+        _ImpalaCreateTableOptionClauses,
         "AS",
         Ref("SelectableGrammar"),
     )

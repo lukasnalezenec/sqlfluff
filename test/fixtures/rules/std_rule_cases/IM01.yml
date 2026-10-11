@@ -1,0 +1,110 @@
+rule: IM01
+
+test_pass_unreserved_cte_name:
+  pass_str: |
+    WITH staging AS (
+        SELECT 1 AS id
+    )
+    SELECT id FROM staging
+  configs:
+    core:
+      dialect: impala
+
+test_pass_unreserved_keyword_cte_name:
+  pass_str: |
+    WITH shuffle AS (
+        SELECT 1 AS id
+    )
+    SELECT id FROM shuffle
+  configs:
+    core:
+      dialect: impala
+
+test_pass_quoted_reserved_cte_names:
+  pass_str: |
+    WITH `hold` AS (
+        SELECT 1 AS id
+    ),
+    `treat` AS (
+        SELECT 2 AS id
+    )
+    SELECT id FROM `hold`
+  configs:
+    core:
+      dialect: impala
+
+test_pass_reserved_cte_name_on_other_dialect:
+  pass_str: |
+    WITH hold AS (
+        SELECT 1 AS id
+    )
+    SELECT id
+  configs:
+    core:
+      dialect: ansi
+
+test_fail_hold_and_treat:
+  fail_str: |
+    WITH hold AS (
+        SELECT 1 AS id
+    ),
+    treat AS (
+        SELECT 2 AS id
+    )
+    SELECT id
+  fix_str: |
+    WITH `hold` AS (
+        SELECT 1 AS id
+    ),
+    `treat` AS (
+        SELECT 2 AS id
+    )
+    SELECT id
+  configs:
+    core:
+      dialect: impala
+
+test_fail_hold_with_column_list:
+  fail_str: |
+    WITH hold (id) AS (
+        SELECT 1
+    )
+    SELECT id
+  fix_str: |
+    WITH `hold` (id) AS (
+        SELECT 1
+    )
+    SELECT id
+  configs:
+    core:
+      dialect: impala
+
+test_fail_mixed_case_reserved_cte:
+  fail_str: |
+    WITH Hold AS (
+        SELECT 1 AS id
+    )
+    SELECT id
+  fix_str: |
+    WITH `Hold` AS (
+        SELECT 1 AS id
+    )
+    SELECT id
+  configs:
+    core:
+      dialect: impala
+
+test_fail_other_reserved_cte_name:
+  fail_str: |
+    WITH location AS (
+        SELECT 1 AS id
+    )
+    SELECT id
+  fix_str: |
+    WITH `location` AS (
+        SELECT 1 AS id
+    )
+    SELECT id
+  configs:
+    core:
+      dialect: impala
