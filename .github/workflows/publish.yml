@@ -1,0 +1,45 @@
+# Build the sqlfluff wheel and attach it to a GitHub release.
+# Same shape as sqlglot-impala-dialect/.github/workflows/publish.yml.
+#
+# A published release builds that tag. A manual run builds the selected ref
+# and uploads the distributions to the tag named in the input.
+#
+# Install a published wheel:
+#   pip install https://github.com/lukasnalezenec/sqlfluff/releases/download/<tag>/sqlfluff-<version>-py3-none-any.whl
+
+name: Publish wheel
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build and upload assets to (e.g. 4.2.2)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.10"
+
+      - name: Build package
+        run: uv build
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.release.tag_name || inputs.tag }}
+          files: dist/*

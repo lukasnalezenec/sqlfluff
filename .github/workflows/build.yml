@@ -1,0 +1,109 @@
+# Build the sqlfluff wheel on pushes and pull requests, and publish a
+# pull-request wheel when a pull request is merged.
+# Same shape as sqlglot-impala-dialect/.github/workflows/build.yml.
+
+name: Build wheel
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  uv-build:
+    # Same-repo pull requests are built by the push event. Fork pull requests
+    # have no push event on this repository, so build those here.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name != github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.10"
+
+      - name: Build package with uv
+        run: uv build
+
+      - name: Install built wheel and verify Impala dialect
+        # Call the venv binaries directly. `uv run` syncs this checkout over the wheel.
+        run: |
+          uv venv --python 3.10
+          uv pip install dist/*.whl
+          .venv/bin/python -c "from sqlfluff.core.dialects import dialect_selector; dialect = dialect_selector('impala'); assert dialect.name == 'impala'"
+          .venv/bin/sqlfluff --version
+
+  pip-build:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.head.repo.full_name != github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip build
+
+      - name: Build package with pip
+        run: python -m build
+
+      - name: Install built wheel and verify Impala dialect
+        run: |
+          python -m pip install dist/*.whl
+          python -c "from sqlfluff.core.dialects import dialect_selector; dialect = dialect_selector('impala'); assert dialect.name == 'impala'"
+          sqlfluff --version
+
+  wheel-on-merge:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.10"
+
+      - name: Set wheel version from the pull request number
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          path = pathlib.Path("pyproject.toml")
+          text = path.read_text()
+          pr = os.environ["PR_NUMBER"]
+          updated, count = re.subn(
+              r'^(version = ")([^"]+)(")\s*$',
+              rf'\1\2+pr.{pr}\3',
+              text,
+              count=1,
+              flags=re.M,
+          )
+          if count != 1:
+              raise SystemExit("Could not set version in pyproject.toml")
+          path.write_text(updated)
+          PY
+
+      - name: Build package with uv
+        run: uv build
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlfluff-pr-${{ github.event.pull_request.number }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 90
