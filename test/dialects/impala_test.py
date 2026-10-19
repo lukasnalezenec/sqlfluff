@@ -5,10 +5,6 @@ import pytest
 from sqlfluff.core import Linter
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Impala 2.8+ allows comparison operators in DROP/SET partition clauses",
-)
 def test_drop_partition_with_comparison_operator() -> None:
     """ALTER TABLE DROP PARTITION accepts a comparison operator."""
     parsed = Linter(dialect="impala").parse_string(
@@ -18,10 +14,6 @@ def test_drop_partition_with_comparison_operator() -> None:
     assert not parsed.violations
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Null-safe equality operator <=> is not parsed",
-)
 def test_null_safe_equality_operator() -> None:
     """The <=> operator is an alias for IS NOT DISTINCT FROM."""
     parsed = Linter(dialect="impala").parse_string(
@@ -29,6 +21,22 @@ def test_null_safe_equality_operator() -> None:
     )
     assert parsed.tree is not None
     assert not parsed.violations
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "alter table db.t drop partition (k = v);",
+        "alter table db.t add partition (k = v);",
+        "drop incremental stats db.t partition (k = v);",
+        "compute incremental stats db.t partition (k = v);",
+    ],
+)
+def test_partition_values_must_be_constants(sql: str) -> None:
+    """Partition specs take constant values, not bare identifiers."""
+    parsed = Linter(dialect="impala").parse_string(sql)
+    assert parsed.tree is not None
+    assert list(parsed.tree.recursive_crawl("unparsable"))
 
 
 def test_comment_after_stored_as_kudu_is_rejected() -> None:
