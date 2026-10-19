@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: ae74aacdcb8de519aea9eaaca14d2ae1a8b604cc1062fddf3a806b94e4faa080
+_hash: 1e077502a05f64b55fce32bfcd11d81f7cc4d9cd558562453064b72695331911
 file:
 - statement:
     compute_stats_statement:
@@ -92,12 +92,11 @@ file:
     - keyword: PARTITION
     - bracketed:
         start_bracket: (
-        expression:
-          column_reference:
-            naked_identifier: x
-          comparison_operator:
-            raw_comparison_operator: <
-          numeric_literal: '100'
+        column_reference:
+          naked_identifier: x
+        comparison_operator:
+          raw_comparison_operator: <
+        numeric_literal: '100'
         end_bracket: )
 - statement_terminator: ;
 - statement:
@@ -110,37 +109,17 @@ file:
     - keyword: PARTITION
     - bracketed:
         start_bracket: (
-        expression:
-          column_reference:
-            naked_identifier: x
-          keyword: IN
-          bracketed:
-          - start_bracket: (
-          - numeric_literal: '100'
-          - comma: ','
-          - numeric_literal: '150'
-          - comma: ','
-          - numeric_literal: '200'
-          - end_bracket: )
-        end_bracket: )
-- statement_terminator: ;
-- statement:
-    compute_stats_statement:
-    - keyword: COMPUTE
-    - keyword: INCREMENTAL
-    - keyword: STATS
-    - table_reference:
-        naked_identifier: int_partitions
-    - keyword: PARTITION
-    - bracketed:
-        start_bracket: (
-        expression:
-        - column_reference:
-            naked_identifier: x
-        - keyword: BETWEEN
+        column_reference:
+          naked_identifier: x
+        keyword: IN
+        bracketed:
+        - start_bracket: (
         - numeric_literal: '100'
-        - keyword: AND
-        - numeric_literal: '175'
+        - comma: ','
+        - numeric_literal: '150'
+        - comma: ','
+        - numeric_literal: '200'
+        - end_bracket: )
         end_bracket: )
 - statement_terminator: ;
 - statement:
@@ -152,26 +131,43 @@ file:
         naked_identifier: int_partitions
     - keyword: PARTITION
     - bracketed:
-        start_bracket: (
-        expression:
-        - column_reference:
-            naked_identifier: x
-        - keyword: IN
-        - bracketed:
-          - start_bracket: (
-          - numeric_literal: '100'
-          - comma: ','
-          - numeric_literal: '150'
-          - comma: ','
-          - numeric_literal: '200'
-          - end_bracket: )
-        - binary_operator: OR
-        - column_reference:
-            naked_identifier: x
-        - comparison_operator:
-            raw_comparison_operator: <
+      - start_bracket: (
+      - column_reference:
+          naked_identifier: x
+      - keyword: BETWEEN
+      - numeric_literal: '100'
+      - keyword: AND
+      - numeric_literal: '175'
+      - end_bracket: )
+- statement_terminator: ;
+- statement:
+    compute_stats_statement:
+    - keyword: COMPUTE
+    - keyword: INCREMENTAL
+    - keyword: STATS
+    - table_reference:
+        naked_identifier: int_partitions
+    - keyword: PARTITION
+    - bracketed:
+      - start_bracket: (
+      - column_reference:
+          naked_identifier: x
+      - keyword: IN
+      - bracketed:
+        - start_bracket: (
         - numeric_literal: '100'
-        end_bracket: )
+        - comma: ','
+        - numeric_literal: '150'
+        - comma: ','
+        - numeric_literal: '200'
+        - end_bracket: )
+      - keyword: OR
+      - column_reference:
+          naked_identifier: x
+      - comparison_operator:
+          raw_comparison_operator: <
+      - numeric_literal: '100'
+      - end_bracket: )
 - statement_terminator: ;
 - statement:
     compute_stats_statement:
@@ -183,13 +179,12 @@ file:
     - keyword: PARTITION
     - bracketed:
         start_bracket: (
-        expression:
-          column_reference:
-            naked_identifier: x
-          comparison_operator:
-          - raw_comparison_operator: '!'
-          - raw_comparison_operator: '='
-          numeric_literal: '150'
+        column_reference:
+          naked_identifier: x
+        comparison_operator:
+        - raw_comparison_operator: '!'
+        - raw_comparison_operator: '='
+        numeric_literal: '150'
         end_bracket: )
 - statement_terminator: ;
 - statement:

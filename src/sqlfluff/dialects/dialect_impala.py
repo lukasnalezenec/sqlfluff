@@ -80,6 +80,9 @@ impala_dialect.replace(
             optional=True,
         ),
     ),
+    ComparisonOperatorGrammar=impala_dialect.get_grammar(
+        "ComparisonOperatorGrammar"
+    ).copy(insert=[Ref("NullSafeEqualsSegment")]),
     # Impala extends Hive file formats with Kudu (also used by SET FILEFORMAT).
     FileFormatGrammar=OneOf(
         "SEQUENCEFILE",
@@ -234,22 +237,65 @@ impala_dialect.add(
         Ref("ImpalaShowLikeGrammar", optional=True),
         optional=True,
     ),
-    ImpalaIncrementalStatsPartitionSpecGrammar=Sequence(
+    ImpalaConstantPartitionSpecGrammar=Sequence(
         "PARTITION",
         Bracketed(
-            OneOf(
-                Delimited(
-                    Sequence(
-                        Ref("ColumnReferenceSegment"),
-                        Ref("EqualsSegment"),
-                        Ref("LiteralGrammar"),
-                    ),
+            Delimited(
+                Sequence(
+                    Ref("ColumnReferenceSegment"),
+                    Ref("EqualsSegment"),
+                    Ref("LiteralGrammar"),
                 ),
-                Ref("ExpressionSegment"),
+            ),
+        ),
+    ),
+    ImpalaPartitionPredicateGrammar=OneOf(
+        Sequence(
+            Ref("ColumnReferenceSegment"),
+            OneOf(
+                Ref("EqualsSegment"),
+                Ref("NotEqualToSegment"),
+                Ref("LessThanSegment"),
+                Ref("LessThanOrEqualToSegment"),
+                Ref("GreaterThanSegment"),
+                Ref("GreaterThanOrEqualToSegment"),
+            ),
+            Ref("LiteralGrammar"),
+        ),
+        Sequence(
+            Ref("ColumnReferenceSegment"),
+            "IN",
+            Bracketed(Delimited(Ref("LiteralGrammar"))),
+        ),
+        Sequence(
+            Ref("ColumnReferenceSegment"),
+            "BETWEEN",
+            Ref("LiteralGrammar"),
+            "AND",
+            Ref("LiteralGrammar"),
+        ),
+    ),
+    ImpalaPartitionFilterGrammar=Sequence(
+        "PARTITION",
+        Bracketed(
+            Delimited(
+                Ref("ImpalaPartitionPredicateGrammar"),
+                delimiter=OneOf(Ref("CommaSegment"), "AND", "OR"),
             ),
         ),
     ),
 )
+
+
+class NullSafeEqualsSegment(ansi.CompositeComparisonOperatorSegment):
+    """Impala null-safe equality `<=>`, an alias for IS NOT DISTINCT FROM."""
+
+    match_grammar = Sequence(
+        Ref("RawLessThanSegment"),
+        Ref("RawEqualsSegment"),
+        Ref("RawGreaterThanSegment"),
+        allow_gaps=False,
+    )
 
 
 class PoolNameReferenceSegment(BaseSegment):
@@ -386,7 +432,7 @@ class ComputeStatsStatementSegment(BaseSegment):
                 "INCREMENTAL",
                 "STATS",
                 Ref("TableReferenceSegment"),
-                Ref("ImpalaIncrementalStatsPartitionSpecGrammar", optional=True),
+                Ref("ImpalaPartitionFilterGrammar", optional=True),
                 Bracketed(
                     Delimited(Ref("ColumnReferenceSegment")),
                     optional=True,
@@ -409,7 +455,7 @@ class DropStatsStatementSegment(BaseSegment):
                 "INCREMENTAL",
                 "STATS",
                 Ref("TableReferenceSegment"),
-                Ref("PartitionSpecGrammar"),
+                Ref("ImpalaConstantPartitionSpecGrammar"),
             ),
         ),
     )
@@ -640,7 +686,7 @@ class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
                             Ref("ColumnDefinitionSegment"),
                         ),
                         Sequence(
-                            Ref("PartitionSpecGrammar"),
+                            Ref("ImpalaConstantPartitionSpecGrammar"),
                             Ref("LocationGrammar", optional=True),
                             Ref("ImpalaCacheSpecGrammar", optional=True),
                         ),
@@ -712,12 +758,12 @@ class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
                     "PARTITIONS",
                 ),
                 Sequence(
-                    Ref("PartitionSpecGrammar", optional=True),
+                    Ref("ImpalaPartitionFilterGrammar", optional=True),
                     "SET",
                     Ref("ImpalaCacheSpecGrammar"),
                 ),
                 Sequence(
-                    Ref("PartitionSpecGrammar", optional=True),
+                    Ref("ImpalaPartitionFilterGrammar", optional=True),
                     "SET",
                     OneOf(
                         Ref("StoredAsGrammar"),
@@ -741,7 +787,7 @@ class AlterTableStatementSegment(ansi.AlterTableStatementSegment):
                     Ref.keyword("IF", optional=True),
                     Ref.keyword("EXISTS", optional=True),
                     OneOf(
-                        Ref("PartitionSpecGrammar"),
+                        Ref("ImpalaPartitionFilterGrammar"),
                         Sequence(
                             "RANGE",
                             "PARTITION",
