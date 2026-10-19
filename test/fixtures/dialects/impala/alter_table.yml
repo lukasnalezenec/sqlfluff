@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: 9fa5323d70eb614d5097bf8f47f62231d455a16d3ab08b71d869b85ad71a2196
+_hash: 6a35365f0ea3e97f9d19c82ead4ab3fdbdc4fb0c89fc5c489ab4c943a1bb19eb
 file:
 - statement:
     alter_table_statement:
@@ -66,4 +66,130 @@ file:
         naked_identifier: t1
     - keyword: RECOVER
     - keyword: PARTITIONS
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: alter
+    - keyword: table
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t
+    - keyword: drop
+    - keyword: partition
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: k
+        comparison_operator:
+          raw_comparison_operator: '='
+        quoted_literal: "'v'"
+        end_bracket: )
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: alter
+    - keyword: table
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t
+    - keyword: drop
+    - keyword: if
+    - keyword: exists
+    - keyword: partition
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: k
+        comparison_operator:
+          raw_comparison_operator: '='
+        quoted_literal: "'v'"
+        end_bracket: )
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: alter
+    - keyword: table
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t
+    - keyword: drop
+    - keyword: partition
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: k
+        comparison_operator:
+          raw_comparison_operator: '='
+        numeric_literal: '1'
+        end_bracket: )
+    - keyword: purge
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: alter
+    - keyword: table
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t
+    - keyword: add
+    - keyword: partition
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: k
+        comparison_operator:
+          raw_comparison_operator: '='
+        numeric_literal: '1'
+        end_bracket: )
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: alter
+    - keyword: table
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t
+    - keyword: add
+    - keyword: if
+    - keyword: not
+    - keyword: exists
+    - keyword: partition
+    - bracketed:
+        start_bracket: (
+        column_reference:
+          naked_identifier: k
+        comparison_operator:
+          raw_comparison_operator: '='
+        quoted_literal: "'v'"
+        end_bracket: )
+- statement_terminator: ;
+- statement:
+    alter_table_statement:
+    - keyword: alter
+    - keyword: table
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t
+    - keyword: add
+    - keyword: if
+    - keyword: not
+    - keyword: exists
+    - keyword: range
+    - keyword: partition
+    - expression:
+        quoted_literal: "'2021-01'"
+    - comparison_operator:
+      - raw_comparison_operator: <
+      - raw_comparison_operator: '='
+    - keyword: values
+    - comparison_operator:
+        raw_comparison_operator: <
+    - expression:
+        quoted_literal: "'2022-01'"
 - statement_terminator: ;

@@ -17,3 +17,8 @@ CREATE EXTERNAL TABLE db.like_t
   LIKE PARQUET '/data/sample.parquet'
   CACHED IN 'default_pool';
 
+create table db.t like db.s;
+
+create table db.t (a int, primary key (a)) partition by range (a)
+(partition value = 1, partition value = 2) stored as kudu;
+

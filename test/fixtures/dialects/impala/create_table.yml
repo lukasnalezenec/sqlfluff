@@ -3,7 +3,7 @@
 # computed by SQLFluff when running the tests. Please run
 # `python test/generate_parse_fixture_yml.py`  to generate them after adding or
 # altering SQL files.
-_hash: fc12c92e8a0634cd1fbb19075f873761902039cb3fa222774ffacc65b2586530
+_hash: 69eb51eb9fbbc44db16a4b28af84daaaf4e7d4d5169795d5661a9e6010f0b19a
 file:
 - statement:
     create_table_statement:
@@ -130,4 +130,70 @@ file:
     - keyword: CACHED
     - keyword: IN
     - quoted_literal: "'default_pool'"
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: create
+    - keyword: table
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t
+    - keyword: like
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: s
+- statement_terminator: ;
+- statement:
+    create_table_statement:
+    - keyword: create
+    - keyword: table
+    - table_reference:
+      - naked_identifier: db
+      - dot: .
+      - naked_identifier: t
+    - bracketed:
+        start_bracket: (
+        column_definition:
+          naked_identifier: a
+          data_type:
+            primitive_type:
+              keyword: int
+        comma: ','
+        table_constraint:
+        - keyword: primary
+        - keyword: key
+        - bracketed:
+            start_bracket: (
+            column_reference:
+              naked_identifier: a
+            end_bracket: )
+        end_bracket: )
+    - keyword: partition
+    - keyword: by
+    - keyword: range
+    - bracketed:
+        start_bracket: (
+        naked_identifier: a
+        end_bracket: )
+    - bracketed:
+      - start_bracket: (
+      - keyword: partition
+      - keyword: value
+      - comparison_operator:
+          raw_comparison_operator: '='
+      - expression:
+          numeric_literal: '1'
+      - comma: ','
+      - keyword: partition
+      - keyword: value
+      - comparison_operator:
+          raw_comparison_operator: '='
+      - expression:
+          numeric_literal: '2'
+      - end_bracket: )
+    - keyword: stored
+    - keyword: as
+    - keyword: kudu
 - statement_terminator: ;
